@@ -89,6 +89,12 @@
     if (pageComponent === 'lfbuildings') {
       return { scope: 'lifeform' };
     }
+    if (pageComponent === 'fleetdispatch') {
+      return { scope: 'fleet' };
+    }
+    if (pageComponent === 'highscore') {
+      return { scope: 'highscore' };
+    }
     return { scope: 'planet' };
   }
 
@@ -102,13 +108,20 @@
     const context = resolveContext(OQueue.Dom.currentPage(doc.location));
     const isResearch = context.scope === 'research';
     const isLifeform = context.scope === 'lifeform';
+    const isFleet = context.scope === 'fleet';
+    const isHighscore = context.scope === 'highscore';
     const isPlanetQueue = context.scope === 'planet';
-    const planetId = isResearch ? null : OQueue.Dom.activePlanetId(doc) || 'default';
+    const planetId =
+      isResearch || isFleet || isHighscore ? null : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
       ? 'Research Queue'
       : isLifeform
         ? `Lifeform Queue - ${planetId}`
-        : `Colony Queue - ${planetId}`;
+        : isFleet
+          ? 'Fleet - Expeditions'
+          : isHighscore
+            ? 'Highscore'
+            : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -132,7 +145,43 @@
     const panel = OQueue.Panel.createPanel(doc);
     let toast = null;
 
+    // Fleet Dispatch and Highscore aren't queue pages - Fleet shows the
+    // expedition-slot advisory, Highscore silently caches rank-1 points
+    // (see storage.js) for that advisory to use elsewhere. Neither has a
+    // building/research/lifeform list to track, so they skip getState/
+    // setState/computeView entirely.
+    function refreshFleet() {
+      const slots = OQueue.Dom.readExpeditionSlots(doc);
+      let advisory = null;
+      let statusMessage = null;
+      if (!slots) {
+        statusMessage = 'Could not read expedition slots on this page.';
+      } else {
+        const rank1 = store.getRank1Points();
+        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null);
+        if (!advisory) statusMessage = `All expedition slots active (${slots.used}/${slots.max}) ✓`;
+      }
+      panel.render({ title, showQueue: false, expeditionAdvisory: advisory, statusMessage, toast });
+      toast = null;
+    }
+
+    function refreshHighscore() {
+      let statusMessage = 'Switch to the Points tab to cache rank-1 data for the expedition advisor.';
+      if (OQueue.Dom.currentHighscoreCategory(doc.location) === '1') {
+        const points = OQueue.Dom.readRank1Points(doc);
+        if (points != null) {
+          store.setRank1Points(points);
+          statusMessage = `Rank-1 points cached: ${points.toLocaleString()}`;
+        }
+      }
+      panel.render({ title, showQueue: false, statusMessage, toast });
+      toast = null;
+    }
+
     function refresh() {
+      if (isFleet) return refreshFleet();
+      if (isHighscore) return refreshHighscore();
+
       const state = getState();
       const domLevels = readLevels();
       if (Object.keys(domLevels).length) {

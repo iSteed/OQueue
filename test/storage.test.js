@@ -100,3 +100,16 @@ test('templates: save, get, delete', () => {
   store.deleteTemplate('New Colony');
   assert.equal(store.getTemplates()['New Colony'], undefined);
 });
+
+test('getRank1Points returns null when unset', () => {
+  const store = freshStore();
+  assert.equal(store.getRank1Points(), null);
+});
+
+test('setRank1Points / getRank1Points round-trips with a timestamp', () => {
+  const store = freshStore();
+  store.setRank1Points(78973266);
+  const record = store.getRank1Points();
+  assert.equal(record.points, 78973266);
+  assert.equal(typeof record.capturedAt, 'number');
+});

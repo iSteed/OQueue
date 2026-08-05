@@ -200,6 +200,29 @@
 
       const body = el('div', { class: 'body' });
 
+      // Fleet/Highscore pages aren't queue pages - no done/current/upcoming
+      // list, no templates, no Edit/Save buttons. Just an advisory line (or
+      // status message) and whatever toast is pending.
+      if (vm.showQueue === false) {
+        if (vm.expeditionAdvisory) {
+          const a = vm.expeditionAdvisory;
+          const slotWord = a.freeSlots === 1 ? 'slot' : 'slots';
+          body.appendChild(
+            el('div', { class: 'current', text: `🚀 Launch expedition (${a.freeSlots}/${a.maxSlots} ${slotWord} free)` })
+          );
+          if (a.suggestion) {
+            body.appendChild(el('div', { class: 'upcoming', text: a.suggestion }));
+          }
+        } else if (vm.statusMessage) {
+          body.appendChild(el('div', { class: 'upcoming', text: vm.statusMessage }));
+        }
+        if (vm.toast) {
+          body.appendChild(el('div', { class: 'toast', text: vm.toast }));
+        }
+        renderChrome(vm, body);
+        return;
+      }
+
       if (vm.moreDoneCount) {
         body.appendChild(el('div', { class: 'more-done', text: `+${vm.moreDoneCount} earlier` }));
       }

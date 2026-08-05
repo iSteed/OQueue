@@ -19,6 +19,7 @@ const FILES = [
   'lifeformBuildings.js',
   'formulas.js',
   'buildorder.js',
+  'expeditions.js',
   'storage.js',
   'import.js',
   'rules.js',
@@ -34,7 +35,7 @@ const REPO_RAW_BASE = 'https://raw.githubusercontent.com/iSteed/OQueue/main';
 const METADATA = `// ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.2.0
+// @version      0.3.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        none

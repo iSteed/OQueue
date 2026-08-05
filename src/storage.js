@@ -13,6 +13,12 @@
  *   oqueue:account              -> same shape, but singular - for account-wide
  *                                  things like research, which aren't per-planet
  *   oqueue:templates            -> { [name]: { mode: 'list'|'rule', list?, rule? } }
+ *   oqueue:rank1points          -> { points, capturedAt } - last-seen rank-1
+ *                                  Points-category score, cached whenever the
+ *                                  player visits that highscore tab so the
+ *                                  expedition cargo advisory (see
+ *                                  expeditions.js) has a number to work with
+ *                                  even on pages that aren't the highscore page.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -28,6 +34,7 @@
   const LIFEFORM_PREFIX = 'oqueue:lifeform:';
   const ACCOUNT_KEY = 'oqueue:account';
   const TEMPLATES_KEY = 'oqueue:templates';
+  const RANK1_POINTS_KEY = 'oqueue:rank1points';
 
   function defaultQueueState() {
     return { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] };
@@ -141,6 +148,16 @@
       return templates;
     }
 
+    function getRank1Points() {
+      return readJSON(RANK1_POINTS_KEY, null);
+    }
+
+    function setRank1Points(points) {
+      const record = { points, capturedAt: Date.now() };
+      writeJSON(RANK1_POINTS_KEY, record);
+      return record;
+    }
+
     return {
       getPlanetState,
       setPlanetState,
@@ -155,6 +172,8 @@
       getTemplates,
       saveTemplate,
       deleteTemplate,
+      getRank1Points,
+      setRank1Points,
     };
   }
 

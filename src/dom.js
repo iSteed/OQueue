@@ -21,6 +21,22 @@
  * (N = 1 Humans, 2 Rock'tal, per LifeformBuildings.SPECIES_BY_INDEX) -
  * that's how activeLifeformSpecies() below tells planets on different
  * species apart without guessing from the page's building ids.
+ *
+ * CONFIRMED (2026-08-05, server s276-en) on the Fleet Dispatch page
+ * (component=fleetdispatch): `#slots` holds two `.fleft` children whose text
+ * reads "Fleets: X/Y" and "Expeditions: X/Y" - readExpeditionSlots() below
+ * parses the second one. This is the signal behind the "launch expedition"
+ * advisory (see expeditions.js) - reliable because it's the game's own slot
+ * counter, not a guess at per-row mission-type markup.
+ *
+ * CONFIRMED (2026-08-05, server s276-en) on the Player highscore page
+ * (page=highscore&category=1, the "Points" tab): `#ranks tbody tr` (rank 1
+ * is the first row) has a `td.score` cell with the comma-formatted score -
+ * readRank1Points() below parses that. Only meaningful on the Points tab
+ * specifically (category=1) - other tabs (Economy/Research/Military/...)
+ * reuse the same table markup with a different score, so callers must check
+ * the URL's `category` param before trusting the result (see currentPage's
+ * sibling currentHighscoreCategory() below).
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -47,6 +63,8 @@
     planetLink: 'a.planetlink',
     planetName: '.planet-name',
     lifeformIndicator: '#lifeform .lifeform-item-icon',
+    expeditionSlots: '#slots',
+    highscoreTable: '#ranks',
   };
 
   function currentPlanetId(loc) {
@@ -61,6 +79,15 @@
     if (!loc) return null;
     const params = new URLSearchParams(loc.search);
     return params.get('component') || params.get('page');
+  }
+
+  // The highscore page reuses the same #ranks table markup across its
+  // Points/Economy/Research/Military/... tabs, distinguished only by this
+  // URL param - readRank1Points() is only meaningful when this is '1'.
+  function currentHighscoreCategory(loc) {
+    loc = loc || (typeof location !== 'undefined' ? location : null);
+    if (!loc) return null;
+    return new URLSearchParams(loc.search).get('category');
   }
 
   // Shared by readBuildingLevels/readTechLevels: walks a registry's {code:
@@ -137,6 +164,36 @@
     });
   }
 
+  // doc: Document to read from (the Fleet Dispatch page). Returns
+  // { used, max } or null if the widget isn't present (wrong page).
+  function readExpeditionSlots(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const box = doc.querySelector(SELECTORS.expeditionSlots);
+    if (!box) return null;
+    const parts = Array.from(box.children);
+    const expeditionPart = parts.find((p) => /expedition/i.test(p.textContent));
+    if (!expeditionPart) return null;
+    const match = /(\d+)\s*\/\s*(\d+)/.exec(expeditionPart.textContent);
+    if (!match) return null;
+    return { used: parseInt(match[1], 10), max: parseInt(match[2], 10) };
+  }
+
+  // doc: Document to read from (the highscore page, Points tab). Returns the
+  // rank-1 player's score as a number, or null if not present/not parseable.
+  // Caller is responsible for checking currentHighscoreCategory() === '1'
+  // first - this function doesn't know which tab produced the markup.
+  function readRank1Points(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const table = doc.querySelector(SELECTORS.highscoreTable);
+    if (!table) return null;
+    const scoreCell = table.querySelector('tbody tr td.score');
+    if (!scoreCell) return null;
+    const value = parseInt(scoreCell.textContent.replace(/[^\d]/g, ''), 10);
+    return isNaN(value) ? null : value;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -172,6 +229,9 @@
     currentPlanetId,
     activePlanetId,
     currentPage,
+    currentHighscoreCategory,
+    readExpeditionSlots,
+    readRank1Points,
     readBuildingLevels,
     readTechLevels,
     readLifeformBuildingLevels,

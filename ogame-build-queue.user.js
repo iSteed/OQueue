@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.2.0
+// @version      0.3.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        none
@@ -424,6 +424,83 @@
   return { generateBuildOrder, BALANCED_ECONOMY, RUSHER, PRESETS };
 });
 
+// ---- expeditions.js ----------------------------------------------
+/*
+ * Expedition fleet-sizing advisor: given the rank-1 player's Points-category
+ * score (the "general points" BuildOrder.md's expedition find formula scales
+ * off), looks up the baseline cargo target from the doc's own table
+ * (BuildOrder.md section 10, "Fleet composition").
+ *
+ * SOURCE (community-informed, ×1 eco/no bonuses baseline - BuildOrder.md
+ * says to multiply by eco_speed x 1.5 x 2 for a Discoverer+Pathfinder setup,
+ * which this module deliberately does NOT attempt since eco_speed isn't
+ * tracked anywhere yet):
+ *   < 100k      -> 2,500 pts  -> 42 LC + 1 probe
+ *   < 1M        -> 6,000 pts  -> 100 LC + 1 probe
+ *   < 5M        -> 9,000 pts  -> 150 LC + 1 probe
+ *   >= 100M     -> 25,000 pts -> 400 LC + 1 probe
+ *
+ * NOTE: the source table has a real gap between 5M and 100M - not an
+ * omission here, BuildOrder.md itself doesn't define that range. Points in
+ * the gap fall back to the < 5M bracket, flagged `approximate: true` so
+ * callers can say "floor, not a target" instead of presenting it as exact.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.Expeditions = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const CARGO_TABLE = [
+    { maxPoints: 100000, pointTarget: 2500, cargo: '42 LC + 1 probe' },
+    { maxPoints: 1000000, pointTarget: 6000, cargo: '100 LC + 1 probe' },
+    { maxPoints: 5000000, pointTarget: 9000, cargo: '150 LC + 1 probe' },
+  ];
+  const TOP_BRACKET = { minPoints: 100000000, pointTarget: 25000, cargo: '400 LC + 1 probe' };
+
+  // rank1Points: number | null (unknown). Returns null if unknown, otherwise
+  // { pointTarget, cargo, approximate }.
+  function cargoTargetForRank1Points(rank1Points) {
+    if (rank1Points == null || isNaN(rank1Points)) return null;
+
+    if (rank1Points >= TOP_BRACKET.minPoints) {
+      return { pointTarget: TOP_BRACKET.pointTarget, cargo: TOP_BRACKET.cargo, approximate: false };
+    }
+    for (const bracket of CARGO_TABLE) {
+      if (rank1Points < bracket.maxPoints) {
+        return { pointTarget: bracket.pointTarget, cargo: bracket.cargo, approximate: false };
+      }
+    }
+    // Falls in the undocumented 5M-100M gap - use the highest defined
+    // bracket as a floor rather than inventing numbers.
+    const last = CARGO_TABLE[CARGO_TABLE.length - 1];
+    return { pointTarget: last.pointTarget, cargo: last.cargo, approximate: true };
+  }
+
+  // slots: { used, max } from Dom.readExpeditionSlots. Returns null if no
+  // slot data (page not visited yet), otherwise an advisory object for the
+  // panel: { freeSlots, maxSlots, suggestion } where suggestion is a label
+  // string or null if rank-1 points haven't been captured yet.
+  function buildAdvisory(slots, rank1Points) {
+    if (!slots) return null;
+    const freeSlots = Math.max(0, slots.max - slots.used);
+    if (freeSlots <= 0) return null;
+
+    const target = cargoTargetForRank1Points(rank1Points);
+    const suggestion = target
+      ? `~${target.cargo} (target ${target.pointTarget.toLocaleString()} pts${target.approximate ? ', approx.' : ''})`
+      : null;
+
+    return { freeSlots, maxSlots: slots.max, suggestion };
+  }
+
+  return { cargoTargetForRank1Points, buildAdvisory };
+});
+
 // ---- storage.js --------------------------------------------------
 /*
  * localStorage wrapper. Accepts an injectable backend so the same code can run
@@ -440,6 +517,12 @@
  *   oqueue:account              -> same shape, but singular - for account-wide
  *                                  things like research, which aren't per-planet
  *   oqueue:templates            -> { [name]: { mode: 'list'|'rule', list?, rule? } }
+ *   oqueue:rank1points          -> { points, capturedAt } - last-seen rank-1
+ *                                  Points-category score, cached whenever the
+ *                                  player visits that highscore tab so the
+ *                                  expedition cargo advisory (see
+ *                                  expeditions.js) has a number to work with
+ *                                  even on pages that aren't the highscore page.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -455,6 +538,7 @@
   const LIFEFORM_PREFIX = 'oqueue:lifeform:';
   const ACCOUNT_KEY = 'oqueue:account';
   const TEMPLATES_KEY = 'oqueue:templates';
+  const RANK1_POINTS_KEY = 'oqueue:rank1points';
 
   function defaultQueueState() {
     return { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] };
@@ -568,6 +652,16 @@
       return templates;
     }
 
+    function getRank1Points() {
+      return readJSON(RANK1_POINTS_KEY, null);
+    }
+
+    function setRank1Points(points) {
+      const record = { points, capturedAt: Date.now() };
+      writeJSON(RANK1_POINTS_KEY, record);
+      return record;
+    }
+
     return {
       getPlanetState,
       setPlanetState,
@@ -582,6 +676,8 @@
       getTemplates,
       saveTemplate,
       deleteTemplate,
+      getRank1Points,
+      setRank1Points,
     };
   }
 
@@ -1226,6 +1322,29 @@
 
       const body = el('div', { class: 'body' });
 
+      // Fleet/Highscore pages aren't queue pages - no done/current/upcoming
+      // list, no templates, no Edit/Save buttons. Just an advisory line (or
+      // status message) and whatever toast is pending.
+      if (vm.showQueue === false) {
+        if (vm.expeditionAdvisory) {
+          const a = vm.expeditionAdvisory;
+          const slotWord = a.freeSlots === 1 ? 'slot' : 'slots';
+          body.appendChild(
+            el('div', { class: 'current', text: `🚀 Launch expedition (${a.freeSlots}/${a.maxSlots} ${slotWord} free)` })
+          );
+          if (a.suggestion) {
+            body.appendChild(el('div', { class: 'upcoming', text: a.suggestion }));
+          }
+        } else if (vm.statusMessage) {
+          body.appendChild(el('div', { class: 'upcoming', text: vm.statusMessage }));
+        }
+        if (vm.toast) {
+          body.appendChild(el('div', { class: 'toast', text: vm.toast }));
+        }
+        renderChrome(vm, body);
+        return;
+      }
+
       if (vm.moreDoneCount) {
         body.appendChild(el('div', { class: 'more-done', text: `+${vm.moreDoneCount} earlier` }));
       }
@@ -1316,6 +1435,22 @@
  * (N = 1 Humans, 2 Rock'tal, per LifeformBuildings.SPECIES_BY_INDEX) -
  * that's how activeLifeformSpecies() below tells planets on different
  * species apart without guessing from the page's building ids.
+ *
+ * CONFIRMED (2026-08-05, server s276-en) on the Fleet Dispatch page
+ * (component=fleetdispatch): `#slots` holds two `.fleft` children whose text
+ * reads "Fleets: X/Y" and "Expeditions: X/Y" - readExpeditionSlots() below
+ * parses the second one. This is the signal behind the "launch expedition"
+ * advisory (see expeditions.js) - reliable because it's the game's own slot
+ * counter, not a guess at per-row mission-type markup.
+ *
+ * CONFIRMED (2026-08-05, server s276-en) on the Player highscore page
+ * (page=highscore&category=1, the "Points" tab): `#ranks tbody tr` (rank 1
+ * is the first row) has a `td.score` cell with the comma-formatted score -
+ * readRank1Points() below parses that. Only meaningful on the Points tab
+ * specifically (category=1) - other tabs (Economy/Research/Military/...)
+ * reuse the same table markup with a different score, so callers must check
+ * the URL's `category` param before trusting the result (see currentPage's
+ * sibling currentHighscoreCategory() below).
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -1342,6 +1477,8 @@
     planetLink: 'a.planetlink',
     planetName: '.planet-name',
     lifeformIndicator: '#lifeform .lifeform-item-icon',
+    expeditionSlots: '#slots',
+    highscoreTable: '#ranks',
   };
 
   function currentPlanetId(loc) {
@@ -1356,6 +1493,15 @@
     if (!loc) return null;
     const params = new URLSearchParams(loc.search);
     return params.get('component') || params.get('page');
+  }
+
+  // The highscore page reuses the same #ranks table markup across its
+  // Points/Economy/Research/Military/... tabs, distinguished only by this
+  // URL param - readRank1Points() is only meaningful when this is '1'.
+  function currentHighscoreCategory(loc) {
+    loc = loc || (typeof location !== 'undefined' ? location : null);
+    if (!loc) return null;
+    return new URLSearchParams(loc.search).get('category');
   }
 
   // Shared by readBuildingLevels/readTechLevels: walks a registry's {code:
@@ -1432,6 +1578,36 @@
     });
   }
 
+  // doc: Document to read from (the Fleet Dispatch page). Returns
+  // { used, max } or null if the widget isn't present (wrong page).
+  function readExpeditionSlots(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const box = doc.querySelector(SELECTORS.expeditionSlots);
+    if (!box) return null;
+    const parts = Array.from(box.children);
+    const expeditionPart = parts.find((p) => /expedition/i.test(p.textContent));
+    if (!expeditionPart) return null;
+    const match = /(\d+)\s*\/\s*(\d+)/.exec(expeditionPart.textContent);
+    if (!match) return null;
+    return { used: parseInt(match[1], 10), max: parseInt(match[2], 10) };
+  }
+
+  // doc: Document to read from (the highscore page, Points tab). Returns the
+  // rank-1 player's score as a number, or null if not present/not parseable.
+  // Caller is responsible for checking currentHighscoreCategory() === '1'
+  // first - this function doesn't know which tab produced the markup.
+  function readRank1Points(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const table = doc.querySelector(SELECTORS.highscoreTable);
+    if (!table) return null;
+    const scoreCell = table.querySelector('tbody tr td.score');
+    if (!scoreCell) return null;
+    const value = parseInt(scoreCell.textContent.replace(/[^\d]/g, ''), 10);
+    return isNaN(value) ? null : value;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -1467,6 +1643,9 @@
     currentPlanetId,
     activePlanetId,
     currentPage,
+    currentHighscoreCategory,
+    readExpeditionSlots,
+    readRank1Points,
     readBuildingLevels,
     readTechLevels,
     readLifeformBuildingLevels,
@@ -1606,6 +1785,12 @@
     if (pageComponent === 'lfbuildings') {
       return { scope: 'lifeform' };
     }
+    if (pageComponent === 'fleetdispatch') {
+      return { scope: 'fleet' };
+    }
+    if (pageComponent === 'highscore') {
+      return { scope: 'highscore' };
+    }
     return { scope: 'planet' };
   }
 
@@ -1619,13 +1804,20 @@
     const context = resolveContext(OQueue.Dom.currentPage(doc.location));
     const isResearch = context.scope === 'research';
     const isLifeform = context.scope === 'lifeform';
+    const isFleet = context.scope === 'fleet';
+    const isHighscore = context.scope === 'highscore';
     const isPlanetQueue = context.scope === 'planet';
-    const planetId = isResearch ? null : OQueue.Dom.activePlanetId(doc) || 'default';
+    const planetId =
+      isResearch || isFleet || isHighscore ? null : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
       ? 'Research Queue'
       : isLifeform
         ? `Lifeform Queue - ${planetId}`
-        : `Colony Queue - ${planetId}`;
+        : isFleet
+          ? 'Fleet - Expeditions'
+          : isHighscore
+            ? 'Highscore'
+            : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -1649,7 +1841,43 @@
     const panel = OQueue.Panel.createPanel(doc);
     let toast = null;
 
+    // Fleet Dispatch and Highscore aren't queue pages - Fleet shows the
+    // expedition-slot advisory, Highscore silently caches rank-1 points
+    // (see storage.js) for that advisory to use elsewhere. Neither has a
+    // building/research/lifeform list to track, so they skip getState/
+    // setState/computeView entirely.
+    function refreshFleet() {
+      const slots = OQueue.Dom.readExpeditionSlots(doc);
+      let advisory = null;
+      let statusMessage = null;
+      if (!slots) {
+        statusMessage = 'Could not read expedition slots on this page.';
+      } else {
+        const rank1 = store.getRank1Points();
+        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null);
+        if (!advisory) statusMessage = `All expedition slots active (${slots.used}/${slots.max}) ✓`;
+      }
+      panel.render({ title, showQueue: false, expeditionAdvisory: advisory, statusMessage, toast });
+      toast = null;
+    }
+
+    function refreshHighscore() {
+      let statusMessage = 'Switch to the Points tab to cache rank-1 data for the expedition advisor.';
+      if (OQueue.Dom.currentHighscoreCategory(doc.location) === '1') {
+        const points = OQueue.Dom.readRank1Points(doc);
+        if (points != null) {
+          store.setRank1Points(points);
+          statusMessage = `Rank-1 points cached: ${points.toLocaleString()}`;
+        }
+      }
+      panel.render({ title, showQueue: false, statusMessage, toast });
+      toast = null;
+    }
+
     function refresh() {
+      if (isFleet) return refreshFleet();
+      if (isHighscore) return refreshHighscore();
+
       const state = getState();
       const domLevels = readLevels();
       if (Object.keys(domLevels).length) {
