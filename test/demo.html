@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>OQueue panel demo (manual visual harness, not part of the userscript)</title>
+<style>body{background:#0d0f12;height:100vh;margin:0;}</style>
+</head>
+<body>
+<script src="../src/buildings.js"></script>
+<script src="../src/storage.js"></script>
+<script src="../src/import.js"></script>
+<script src="../src/rules.js"></script>
+<script src="../src/templates.js"></script>
+<script src="../src/panel.js"></script>
+<script>
+  const panel = OQueue.Panel.createPanel(document);
+  panel.mount(document.body);
+
+  const vm = {
+    planetName: 'Homeworld',
+    doneItems: [{ label: 'Metal Mine 4' }, { label: 'Crystal Mine 3' }],
+    current: { label: 'Metal Mine 5' },
+    upcoming: [
+      { label: 'Crystal Mine 4' },
+      { label: 'Solar Plant 5' },
+      { label: 'Metal Mine 6' },
+    ],
+    templates: ['New Colony'],
+    toast: null,
+  };
+  panel.render(vm);
+
+  panel.on('done', () => {
+    vm.doneItems.push(vm.current);
+    vm.current = vm.upcoming.shift() || null;
+    vm.toast = 'Advanced to next item';
+    panel.render(vm);
+  });
+  panel.on('importSave', (text) => {
+    const { list, errors } = OQueue.Import.parseImportText(text);
+    vm.upcoming = list.map((i) => ({ label: `${i.name} ${i.level}` }));
+    vm.toast = errors.length ? `Errors: ${errors.join(', ')}` : 'Imported';
+    panel.render(vm);
+  });
+</script>
+</body>
+</html>
