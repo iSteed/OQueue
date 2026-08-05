@@ -8,7 +8,10 @@ const {
   saveAccountStateAsTemplate,
   applyTemplateToLifeform,
   saveLifeformStateAsTemplate,
+  seedDefaultTemplates,
+  CURATED_TEMPLATES,
 } = require('../src/templates');
+const BuildOrder = require('../src/buildorder');
 
 function freshStore() {
   return createStore(memoryBackend());
@@ -89,4 +92,36 @@ test('applyTemplateToLifeform writes template onto a planet\'s lifeform queue, r
 test('applyTemplateToLifeform throws for unknown template name', () => {
   const store = freshStore();
   assert.throws(() => applyTemplateToLifeform(store, '1', 'Nope'));
+});
+
+test('seedDefaultTemplates populates every preset and curated template on a totally empty store', () => {
+  const store = freshStore();
+  seedDefaultTemplates(store);
+  const templates = store.getTemplates();
+  for (const name in BuildOrder.PRESETS) assert.ok(templates[name], `missing preset: ${name}`);
+  for (const name in CURATED_TEMPLATES) assert.ok(templates[name], `missing curated template: ${name}`);
+});
+
+test('seedDefaultTemplates backfills missing curated templates without touching ones that already exist', () => {
+  const store = freshStore();
+  // Simulate an older install that already auto-seeded just the presets.
+  store.saveTemplate('Balanced Economy', { mode: 'list', list: [{ code: 'CUSTOM', level: 99 }] });
+
+  seedDefaultTemplates(store);
+  const templates = store.getTemplates();
+
+  // Pre-existing template under a curated name is left untouched...
+  assert.deepEqual(templates['Balanced Economy'].list, [{ code: 'CUSTOM', level: 99 }]);
+  // ...but the previously-missing curated templates get backfilled.
+  assert.ok(templates['Homeworld Growth']);
+  assert.ok(templates['Core Research']);
+  assert.ok(templates["Rock'tal Growth"]);
+});
+
+test('seedDefaultTemplates is a no-op for names the user already has, even after being called twice', () => {
+  const store = freshStore();
+  seedDefaultTemplates(store);
+  seedDefaultTemplates(store);
+  const templates = store.getTemplates();
+  assert.equal(Object.keys(templates).length, Object.keys(BuildOrder.PRESETS).length + Object.keys(CURATED_TEMPLATES).length);
 });
