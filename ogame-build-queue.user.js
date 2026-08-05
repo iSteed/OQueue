@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.3.0
+// @version      0.3.1
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        none
@@ -1401,7 +1401,18 @@
 
     return {
       host,
-      mount(parent) { (parent || doc.body).appendChild(host); },
+      // Removes any stray '#oqueue-panel-host' left behind by another script
+      // instance before mounting this one - guards against exactly the
+      // failure mode seen when two Tampermonkey copies of OQueue end up
+      // installed at once (e.g. a @namespace change on update) and both
+      // inject a panel into the same page, stacking two independent
+      // instances (one stale/broken) on top of each other.
+      mount(parent) {
+        parent = parent || doc.body;
+        const stray = parent.querySelector(`#${host.id}`);
+        if (stray && stray !== host) stray.remove();
+        parent.appendChild(host);
+      },
       unmount() { if (host.parentNode) host.parentNode.removeChild(host); },
       render,
       on,
