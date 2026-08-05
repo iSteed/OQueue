@@ -6,6 +6,8 @@ const {
   saveCurrentAsTemplate,
   applyTemplateToAccount,
   saveAccountStateAsTemplate,
+  applyTemplateToLifeform,
+  saveLifeformStateAsTemplate,
 } = require('../src/templates');
 
 function freshStore() {
@@ -60,4 +62,31 @@ test('applyTemplateToAccount replaces the research queue and resets done', () =>
 test('applyTemplateToAccount throws for unknown template name', () => {
   const store = freshStore();
   assert.throws(() => applyTemplateToAccount(store, 'Nope'));
+});
+
+test('saveLifeformStateAsTemplate captures a planet\'s lifeform-building queue', () => {
+  const store = freshStore();
+  store.setLifeformState('1', { mode: 'list', list: [{ code: 'ME', level: 21 }], rule: null, cachedLevels: {}, done: [] });
+  saveLifeformStateAsTemplate(store, '1', 'Rock\'tal Growth');
+  const templates = store.getTemplates();
+  assert.deepEqual(templates['Rock\'tal Growth'], { mode: 'list', list: [{ code: 'ME', level: 21 }] });
+});
+
+test('applyTemplateToLifeform writes template onto a planet\'s lifeform queue, resetting done', () => {
+  const store = freshStore();
+  store.saveTemplate('Rock\'tal Growth', { mode: 'list', list: [{ code: 'ME', level: 21 }, { code: 'CF', level: 23 }] });
+  store.updateLifeformState('2', { done: ['stale'] });
+
+  applyTemplateToLifeform(store, '2', 'Rock\'tal Growth');
+  const state = store.getLifeformState('2');
+  assert.equal(state.mode, 'list');
+  assert.equal(state.list.length, 2);
+  assert.deepEqual(state.done, []);
+  // Independent of the regular per-planet building queue for the same planet id.
+  assert.deepEqual(store.getPlanetState('2').list, []);
+});
+
+test('applyTemplateToLifeform throws for unknown template name', () => {
+  const store = freshStore();
+  assert.throws(() => applyTemplateToLifeform(store, '1', 'Nope'));
 });

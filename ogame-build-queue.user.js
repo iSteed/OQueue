@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.4.0
+// @version      0.5.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        none
@@ -1184,6 +1184,32 @@
     return store.saveTemplate(templateName, template);
   }
 
+  // Same idea again, for a planet's lifeform-building queue - a separate
+  // per-planet store from the regular building queue (see storage.js's
+  // oqueue:lifeform: prefix), so it needs its own apply/save pair even
+  // though the shape is identical to applyTemplate/saveCurrentAsTemplate.
+  function applyTemplateToLifeform(store, planetId, templateName) {
+    const templates = store.getTemplates();
+    const template = templates[templateName];
+    if (!template) throw new Error(`Unknown template: ${templateName}`);
+
+    return store.updateLifeformState(planetId, {
+      mode: template.mode,
+      list: template.mode === 'list' ? template.list.slice() : [],
+      rule: template.mode === 'rule' ? template.rule : null,
+      done: [],
+    });
+  }
+
+  function saveLifeformStateAsTemplate(store, planetId, templateName) {
+    const state = store.getLifeformState(planetId);
+    const template =
+      state.mode === 'list'
+        ? { mode: 'list', list: state.list.slice() }
+        : { mode: 'rule', rule: state.rule };
+    return store.saveTemplate(templateName, template);
+  }
+
   // First-run bootstrap only: if the store has zero templates, seed the
   // curated presets so a fresh install has something usable in the dropdown.
   // Never overwrites - if the user already has any templates (including
@@ -1200,6 +1226,8 @@
     saveCurrentAsTemplate,
     applyTemplateToAccount,
     saveAccountStateAsTemplate,
+    applyTemplateToLifeform,
+    saveLifeformStateAsTemplate,
     seedDefaultTemplates,
   };
 });
@@ -2063,7 +2091,8 @@
       }
 
       const view = computeView(state, domLevels);
-      const templates = isPlanetQueue || isResearch ? Object.keys(store.getTemplates()) : [];
+      const templates =
+        isPlanetQueue || isResearch || isLifeform ? Object.keys(store.getTemplates()) : [];
       const { doneItems, moreDoneCount } = capDoneItems(view.doneItems, DONE_HISTORY_LIMIT);
 
       panel.render({
@@ -2109,10 +2138,10 @@
       refresh();
     });
 
-    // Templates work for the regular per-planet building queue and the
-    // account-wide research queue (one shared name -> template store, just
-    // applied differently depending on scope). Not wired up for lifeform
-    // buildings yet - separate per-planet queue, different registry.
+    // Templates work for the regular per-planet building queue, the
+    // account-wide research queue, and a planet's lifeform-building queue -
+    // one shared name -> template store, just applied differently depending
+    // on scope.
     if (isPlanetQueue) {
       panel.on('applyTemplate', (name) => {
         OQueue.Templates.applyTemplate(store, planetId, name);
@@ -2134,6 +2163,18 @@
 
       panel.on('saveTemplate', (name) => {
         OQueue.Templates.saveAccountStateAsTemplate(store, name);
+        toast = `Saved template "${name}"`;
+        refresh();
+      });
+    } else if (isLifeform) {
+      panel.on('applyTemplate', (name) => {
+        OQueue.Templates.applyTemplateToLifeform(store, planetId, name);
+        toast = `Applied template "${name}"`;
+        refresh();
+      });
+
+      panel.on('saveTemplate', (name) => {
+        OQueue.Templates.saveLifeformStateAsTemplate(store, planetId, name);
         toast = `Saved template "${name}"`;
         refresh();
       });

@@ -47,7 +47,7 @@ Buildings are per-planet; research is account-wide. The panel automatically mana
 - Any planet page (Resources, Facilities, etc.) → that planet's building queue, titled "Colony Queue - `<planet>`"
 - The Research page → the one shared research queue, titled "Research Queue"
 
-Templates (below) only apply to the per-planet building queue for now.
+Templates (below) work on the per-planet building queue, the account-wide research queue, and a planet's lifeform-building queue.
 
 ## Import / Edit syntax
 

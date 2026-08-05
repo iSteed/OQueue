@@ -62,6 +62,32 @@
     return store.saveTemplate(templateName, template);
   }
 
+  // Same idea again, for a planet's lifeform-building queue - a separate
+  // per-planet store from the regular building queue (see storage.js's
+  // oqueue:lifeform: prefix), so it needs its own apply/save pair even
+  // though the shape is identical to applyTemplate/saveCurrentAsTemplate.
+  function applyTemplateToLifeform(store, planetId, templateName) {
+    const templates = store.getTemplates();
+    const template = templates[templateName];
+    if (!template) throw new Error(`Unknown template: ${templateName}`);
+
+    return store.updateLifeformState(planetId, {
+      mode: template.mode,
+      list: template.mode === 'list' ? template.list.slice() : [],
+      rule: template.mode === 'rule' ? template.rule : null,
+      done: [],
+    });
+  }
+
+  function saveLifeformStateAsTemplate(store, planetId, templateName) {
+    const state = store.getLifeformState(planetId);
+    const template =
+      state.mode === 'list'
+        ? { mode: 'list', list: state.list.slice() }
+        : { mode: 'rule', rule: state.rule };
+    return store.saveTemplate(templateName, template);
+  }
+
   // First-run bootstrap only: if the store has zero templates, seed the
   // curated presets so a fresh install has something usable in the dropdown.
   // Never overwrites - if the user already has any templates (including
@@ -78,6 +104,8 @@
     saveCurrentAsTemplate,
     applyTemplateToAccount,
     saveAccountStateAsTemplate,
+    applyTemplateToLifeform,
+    saveLifeformStateAsTemplate,
     seedDefaultTemplates,
   };
 });

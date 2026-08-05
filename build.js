@@ -37,7 +37,7 @@ const REPO_RAW_BASE = 'https://raw.githubusercontent.com/iSteed/OQueue/main';
 const METADATA = `// ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.4.0
+// @version      0.5.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        none

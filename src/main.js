@@ -192,7 +192,8 @@
       }
 
       const view = computeView(state, domLevels);
-      const templates = isPlanetQueue || isResearch ? Object.keys(store.getTemplates()) : [];
+      const templates =
+        isPlanetQueue || isResearch || isLifeform ? Object.keys(store.getTemplates()) : [];
       const { doneItems, moreDoneCount } = capDoneItems(view.doneItems, DONE_HISTORY_LIMIT);
 
       panel.render({
@@ -238,10 +239,10 @@
       refresh();
     });
 
-    // Templates work for the regular per-planet building queue and the
-    // account-wide research queue (one shared name -> template store, just
-    // applied differently depending on scope). Not wired up for lifeform
-    // buildings yet - separate per-planet queue, different registry.
+    // Templates work for the regular per-planet building queue, the
+    // account-wide research queue, and a planet's lifeform-building queue -
+    // one shared name -> template store, just applied differently depending
+    // on scope.
     if (isPlanetQueue) {
       panel.on('applyTemplate', (name) => {
         OQueue.Templates.applyTemplate(store, planetId, name);
@@ -263,6 +264,18 @@
 
       panel.on('saveTemplate', (name) => {
         OQueue.Templates.saveAccountStateAsTemplate(store, name);
+        toast = `Saved template "${name}"`;
+        refresh();
+      });
+    } else if (isLifeform) {
+      panel.on('applyTemplate', (name) => {
+        OQueue.Templates.applyTemplateToLifeform(store, planetId, name);
+        toast = `Applied template "${name}"`;
+        refresh();
+      });
+
+      panel.on('saveTemplate', (name) => {
+        OQueue.Templates.saveLifeformStateAsTemplate(store, planetId, name);
         toast = `Saved template "${name}"`;
         refresh();
       });
