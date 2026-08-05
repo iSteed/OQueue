@@ -29,6 +29,11 @@
  * advisory (see expeditions.js) - reliable because it's the game's own slot
  * counter, not a guess at per-row mission-type markup.
  *
+ * CONFIRMED (2026-08-05, server s276-en) on the Fleet Dispatch page's ship
+ * selector: same `li.technology[data-technology]` markup as buildings, but
+ * the count lives in a `.amount` child's text instead of a `.level`
+ * element's `data-value` attribute - readShipCounts() below reads that.
+ *
  * CONFIRMED (2026-08-05, server s276-en) on the Player highscore page
  * (page=highscore&category=1, the "Points" tab): `#ranks tbody tr` (rank 1
  * is the first row) has a `td.score` cell with the comma-formatted score -
@@ -43,13 +48,14 @@
     module.exports = factory(
       typeof require !== 'undefined' ? require('./buildings') : root.OQueue.Buildings,
       typeof require !== 'undefined' ? require('./technologies') : root.OQueue.Technologies,
-      typeof require !== 'undefined' ? require('./lifeformBuildings') : root.OQueue.LifeformBuildings
+      typeof require !== 'undefined' ? require('./lifeformBuildings') : root.OQueue.LifeformBuildings,
+      typeof require !== 'undefined' ? require('./ships') : root.OQueue.Ships
     );
   } else {
     root.OQueue = root.OQueue || {};
-    root.OQueue.Dom = factory(root.OQueue.Buildings, root.OQueue.Technologies, root.OQueue.LifeformBuildings);
+    root.OQueue.Dom = factory(root.OQueue.Buildings, root.OQueue.Technologies, root.OQueue.LifeformBuildings, root.OQueue.Ships);
   }
-})(typeof self !== 'undefined' ? self : this, function (Buildings, Technologies, LifeformBuildings) {
+})(typeof self !== 'undefined' ? self : this, function (Buildings, Technologies, LifeformBuildings, Ships) {
   'use strict';
 
   const SELECTORS = {
@@ -65,6 +71,7 @@
     lifeformIndicator: '#lifeform .lifeform-item-icon',
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
+    shipAmount: '.amount',
   };
 
   function currentPlanetId(loc) {
@@ -194,6 +201,26 @@
     return isNaN(value) ? null : value;
   }
 
+  // doc: Document to read from (the Fleet Dispatch page). Returns
+  // { [shipCode]: count } for the departure planet - used to check whether
+  // an expedition fleet (Pathfinder + cargo) actually exists before
+  // suggesting you launch one (see expeditions.js#buildAdvisory).
+  function readShipCounts(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return {};
+    const counts = {};
+    for (const code in Ships.SHIPS) {
+      const { id } = Ships.SHIPS[code];
+      const row = doc.querySelector(SELECTORS.buildingRow(id));
+      if (!row) continue;
+      const amountEl = row.querySelector(SELECTORS.shipAmount);
+      if (!amountEl) continue;
+      const value = parseInt(amountEl.textContent.replace(/[^\d]/g, ''), 10);
+      if (!isNaN(value)) counts[code] = value;
+    }
+    return counts;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -232,6 +259,7 @@
     currentHighscoreCategory,
     readExpeditionSlots,
     readRank1Points,
+    readShipCounts,
     readBuildingLevels,
     readTechLevels,
     readLifeformBuildingLevels,

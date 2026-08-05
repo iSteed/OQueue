@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.3.1
+// @version      0.4.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        none
@@ -261,6 +261,66 @@
   return { SPECIES, SPECIES_BY_INDEX, byCode, byId };
 });
 
+// ---- ships.js ----------------------------------------------------
+/*
+ * Ship shorthand -> stable OGame ship ID map. Mirrors buildings.js/
+ * technologies.js exactly (same shape, same byCode/byId), but for the
+ * dispatchable ship roster shown on the Fleet Dispatch page.
+ *
+ * CONFIRMED live (2026-08-05, server s276-en) by reading
+ * `li.technology[data-technology]` + `aria-label` on the fleetdispatch
+ * page's ship selector - every id below matches. Solar Satellite and
+ * Crawler deliberately aren't here: neither is dispatchable (they don't
+ * appear in that list at all), so they don't belong in this registry.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.Ships = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const SHIPS = {
+    LF:  { id: 204, name: 'Light Fighter' },
+    HF:  { id: 205, name: 'Heavy Fighter' },
+    CRU: { id: 206, name: 'Cruiser' },
+    BS:  { id: 207, name: 'Battleship' },
+    BC:  { id: 215, name: 'Battlecruiser' },
+    BM:  { id: 211, name: 'Bomber' },
+    DES: { id: 213, name: 'Destroyer' },
+    DTH: { id: 214, name: 'Deathstar' },
+    RPR: { id: 218, name: 'Reaper' },
+    PF:  { id: 219, name: 'Pathfinder' },
+    SC:  { id: 202, name: 'Small Cargo' },
+    LC:  { id: 203, name: 'Large Cargo' },
+    COL: { id: 208, name: 'Colony Ship' },
+    RCY: { id: 209, name: 'Recycler' },
+    PRB: { id: 210, name: 'Espionage Probe' },
+  };
+
+  const BY_ID = {};
+  for (const code in SHIPS) {
+    BY_ID[SHIPS[code].id] = { code, name: SHIPS[code].name };
+  }
+
+  function byCode(code) {
+    const entry = SHIPS[code.toUpperCase()];
+    if (!entry) throw new Error(`Unknown ship shorthand: ${code}`);
+    return { code: code.toUpperCase(), id: entry.id, name: entry.name };
+  }
+
+  function byId(id) {
+    const entry = BY_ID[id];
+    if (!entry) throw new Error(`Unknown ship id: ${id}`);
+    return { code: entry.code, id, name: entry.name };
+  }
+
+  return { SHIPS, byCode, byId };
+});
+
 // ---- formulas.js -------------------------------------------------
 /*
  * OGame energy formulas: how much energy a building produces or consumes at
@@ -481,24 +541,49 @@
     return { pointTarget: last.pointTarget, cargo: last.cargo, approximate: true };
   }
 
-  // slots: { used, max } from Dom.readExpeditionSlots. Returns null if no
-  // slot data (page not visited yet), otherwise an advisory object for the
-  // panel: { freeSlots, maxSlots, suggestion } where suggestion is a label
-  // string or null if rank-1 points haven't been captured yet.
-  function buildAdvisory(slots, rank1Points) {
+  // A launchable expedition fleet needs a Pathfinder (BuildOrder.md section
+  // 3: "One Pathfinder in an expedition fleet doubles the find... get one
+  // per expedition slot") and at least one cargo ship to carry the loot
+  // home - Large Cargo preferred, Small Cargo as a fallback for an early
+  // account that hasn't unlocked LC yet.
+  function hasExpeditionFleet(shipCounts) {
+    shipCounts = shipCounts || {};
+    return {
+      pathfinder: (shipCounts.PF || 0) > 0,
+      cargo: (shipCounts.LC || 0) > 0 || (shipCounts.SC || 0) > 0,
+    };
+  }
+
+  // slots: { used, max } from Dom.readExpeditionSlots. shipCounts: from
+  // Dom.readShipCounts. Returns null if no slot data (page not visited yet)
+  // or no free slots, otherwise an advisory object for the panel:
+  //   { freeSlots, maxSlots, ready, missing, suggestion }
+  // ready is false (with `missing` describing what's absent) until an
+  // actual Pathfinder + cargo fleet exists - only then is `suggestion` a
+  // real cargo-sizing readout instead of null.
+  function buildAdvisory(slots, rank1Points, shipCounts) {
     if (!slots) return null;
     const freeSlots = Math.max(0, slots.max - slots.used);
     if (freeSlots <= 0) return null;
+
+    const have = hasExpeditionFleet(shipCounts);
+    const missing = [];
+    if (!have.pathfinder) missing.push('a Pathfinder');
+    if (!have.cargo) missing.push('cargo ships (Large/Small Cargo)');
+
+    if (missing.length) {
+      return { freeSlots, maxSlots: slots.max, ready: false, missing, suggestion: null };
+    }
 
     const target = cargoTargetForRank1Points(rank1Points);
     const suggestion = target
       ? `~${target.cargo} (target ${target.pointTarget.toLocaleString()} pts${target.approximate ? ', approx.' : ''})`
       : null;
 
-    return { freeSlots, maxSlots: slots.max, suggestion };
+    return { freeSlots, maxSlots: slots.max, ready: true, missing: [], suggestion };
   }
 
-  return { cargoTargetForRank1Points, buildAdvisory };
+  return { cargoTargetForRank1Points, hasExpeditionFleet, buildAdvisory };
 });
 
 // ---- storage.js --------------------------------------------------
@@ -1329,11 +1414,18 @@
         if (vm.expeditionAdvisory) {
           const a = vm.expeditionAdvisory;
           const slotWord = a.freeSlots === 1 ? 'slot' : 'slots';
-          body.appendChild(
-            el('div', { class: 'current', text: `🚀 Launch expedition (${a.freeSlots}/${a.maxSlots} ${slotWord} free)` })
-          );
-          if (a.suggestion) {
-            body.appendChild(el('div', { class: 'upcoming', text: a.suggestion }));
+          if (a.ready) {
+            body.appendChild(
+              el('div', { class: 'current', text: `🚀 Launch expedition (${a.freeSlots}/${a.maxSlots} ${slotWord} free)` })
+            );
+            if (a.suggestion) {
+              body.appendChild(el('div', { class: 'upcoming', text: a.suggestion }));
+            }
+          } else {
+            body.appendChild(
+              el('div', { class: 'upcoming-label', text: `${a.freeSlots}/${a.maxSlots} ${slotWord} free` })
+            );
+            body.appendChild(el('div', { class: 'upcoming', text: `Still need: ${a.missing.join(', ')}` }));
           }
         } else if (vm.statusMessage) {
           body.appendChild(el('div', { class: 'upcoming', text: vm.statusMessage }));
@@ -1454,6 +1546,11 @@
  * advisory (see expeditions.js) - reliable because it's the game's own slot
  * counter, not a guess at per-row mission-type markup.
  *
+ * CONFIRMED (2026-08-05, server s276-en) on the Fleet Dispatch page's ship
+ * selector: same `li.technology[data-technology]` markup as buildings, but
+ * the count lives in a `.amount` child's text instead of a `.level`
+ * element's `data-value` attribute - readShipCounts() below reads that.
+ *
  * CONFIRMED (2026-08-05, server s276-en) on the Player highscore page
  * (page=highscore&category=1, the "Points" tab): `#ranks tbody tr` (rank 1
  * is the first row) has a `td.score` cell with the comma-formatted score -
@@ -1468,13 +1565,14 @@
     module.exports = factory(
       typeof require !== 'undefined' ? require('./buildings') : root.OQueue.Buildings,
       typeof require !== 'undefined' ? require('./technologies') : root.OQueue.Technologies,
-      typeof require !== 'undefined' ? require('./lifeformBuildings') : root.OQueue.LifeformBuildings
+      typeof require !== 'undefined' ? require('./lifeformBuildings') : root.OQueue.LifeformBuildings,
+      typeof require !== 'undefined' ? require('./ships') : root.OQueue.Ships
     );
   } else {
     root.OQueue = root.OQueue || {};
-    root.OQueue.Dom = factory(root.OQueue.Buildings, root.OQueue.Technologies, root.OQueue.LifeformBuildings);
+    root.OQueue.Dom = factory(root.OQueue.Buildings, root.OQueue.Technologies, root.OQueue.LifeformBuildings, root.OQueue.Ships);
   }
-})(typeof self !== 'undefined' ? self : this, function (Buildings, Technologies, LifeformBuildings) {
+})(typeof self !== 'undefined' ? self : this, function (Buildings, Technologies, LifeformBuildings, Ships) {
   'use strict';
 
   const SELECTORS = {
@@ -1490,6 +1588,7 @@
     lifeformIndicator: '#lifeform .lifeform-item-icon',
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
+    shipAmount: '.amount',
   };
 
   function currentPlanetId(loc) {
@@ -1619,6 +1718,26 @@
     return isNaN(value) ? null : value;
   }
 
+  // doc: Document to read from (the Fleet Dispatch page). Returns
+  // { [shipCode]: count } for the departure planet - used to check whether
+  // an expedition fleet (Pathfinder + cargo) actually exists before
+  // suggesting you launch one (see expeditions.js#buildAdvisory).
+  function readShipCounts(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return {};
+    const counts = {};
+    for (const code in Ships.SHIPS) {
+      const { id } = Ships.SHIPS[code];
+      const row = doc.querySelector(SELECTORS.buildingRow(id));
+      if (!row) continue;
+      const amountEl = row.querySelector(SELECTORS.shipAmount);
+      if (!amountEl) continue;
+      const value = parseInt(amountEl.textContent.replace(/[^\d]/g, ''), 10);
+      if (!isNaN(value)) counts[code] = value;
+    }
+    return counts;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -1657,6 +1776,7 @@
     currentHighscoreCategory,
     readExpeditionSlots,
     readRank1Points,
+    readShipCounts,
     readBuildingLevels,
     readTechLevels,
     readLifeformBuildingLevels,
@@ -1704,6 +1824,50 @@
   return { requestPermission, notifyBuildComplete };
 });
 
+// ---- cleanup.js --------------------------------------------------
+/*
+ * Cosmetic page cleanup: hides premium-upsell nav items and the ad banner.
+ * Pure CSS injection - a single <style> tag added once to <head>, not a DOM
+ * removal, so it can't break anything the game's own JS expects to find.
+ *
+ * CONFIRMED (2026-08-05, server s276-en):
+ *   - Merchant/Recruit Officers/Shop/Rewards nav items: each is an
+ *     `<a class="... premiumHighligt ...">` inside an `<li>` under
+ *     #menuTable - hiding the `<li>` via :has() removes exactly those four,
+ *     since no other nav item carries that class.
+ *   - Ad banner: #bannerSkyscrapercomponent, a sibling of #planetbarcomponent
+ *     inside #right.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.Cleanup = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const STYLE_ID = 'oqueue-cleanup-style';
+  const CSS = [
+    '#menuTable li:has(a.premiumHighligt) { display: none !important; }',
+    '#bannerSkyscrapercomponent { display: none !important; }',
+  ].join('\n');
+
+  // Idempotent - safe to call every time the app starts, only inserts once
+  // per document (a fresh page load gets a fresh document anyway).
+  function apply(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc || doc.getElementById(STYLE_ID)) return;
+    const style = doc.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = CSS;
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+
+  return { apply, CSS, STYLE_ID };
+});
+
 // ---- main.js -----------------------------------------------------
 /*
  * Orchestrator: wires storage, rule/list resolution, the panel, DOM readers,
@@ -1723,6 +1887,7 @@
         Panel: require('./panel'),
         Dom: require('./dom'),
         Notify: require('./notify'),
+        Cleanup: require('./cleanup'),
       }
     );
   } else {
@@ -1865,7 +2030,8 @@
         statusMessage = 'Could not read expedition slots on this page.';
       } else {
         const rank1 = store.getRank1Points();
-        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null);
+        const shipCounts = OQueue.Dom.readShipCounts(doc);
+        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null, shipCounts);
         if (!advisory) statusMessage = `All expedition slots active (${slots.used}/${slots.max}) ✓`;
       }
       panel.render({ title, showQueue: false, expeditionAdvisory: advisory, statusMessage, toast });
@@ -1977,6 +2143,7 @@
 
     let pollTimer = null;
     function start() {
+      OQueue.Cleanup.apply(doc);
       panel.mount(doc.body);
       refresh();
       OQueue.Dom.watchConstructionBox(doc, refresh);

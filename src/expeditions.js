@@ -54,22 +54,47 @@
     return { pointTarget: last.pointTarget, cargo: last.cargo, approximate: true };
   }
 
-  // slots: { used, max } from Dom.readExpeditionSlots. Returns null if no
-  // slot data (page not visited yet), otherwise an advisory object for the
-  // panel: { freeSlots, maxSlots, suggestion } where suggestion is a label
-  // string or null if rank-1 points haven't been captured yet.
-  function buildAdvisory(slots, rank1Points) {
+  // A launchable expedition fleet needs a Pathfinder (BuildOrder.md section
+  // 3: "One Pathfinder in an expedition fleet doubles the find... get one
+  // per expedition slot") and at least one cargo ship to carry the loot
+  // home - Large Cargo preferred, Small Cargo as a fallback for an early
+  // account that hasn't unlocked LC yet.
+  function hasExpeditionFleet(shipCounts) {
+    shipCounts = shipCounts || {};
+    return {
+      pathfinder: (shipCounts.PF || 0) > 0,
+      cargo: (shipCounts.LC || 0) > 0 || (shipCounts.SC || 0) > 0,
+    };
+  }
+
+  // slots: { used, max } from Dom.readExpeditionSlots. shipCounts: from
+  // Dom.readShipCounts. Returns null if no slot data (page not visited yet)
+  // or no free slots, otherwise an advisory object for the panel:
+  //   { freeSlots, maxSlots, ready, missing, suggestion }
+  // ready is false (with `missing` describing what's absent) until an
+  // actual Pathfinder + cargo fleet exists - only then is `suggestion` a
+  // real cargo-sizing readout instead of null.
+  function buildAdvisory(slots, rank1Points, shipCounts) {
     if (!slots) return null;
     const freeSlots = Math.max(0, slots.max - slots.used);
     if (freeSlots <= 0) return null;
+
+    const have = hasExpeditionFleet(shipCounts);
+    const missing = [];
+    if (!have.pathfinder) missing.push('a Pathfinder');
+    if (!have.cargo) missing.push('cargo ships (Large/Small Cargo)');
+
+    if (missing.length) {
+      return { freeSlots, maxSlots: slots.max, ready: false, missing, suggestion: null };
+    }
 
     const target = cargoTargetForRank1Points(rank1Points);
     const suggestion = target
       ? `~${target.cargo} (target ${target.pointTarget.toLocaleString()} pts${target.approximate ? ', approx.' : ''})`
       : null;
 
-    return { freeSlots, maxSlots: slots.max, suggestion };
+    return { freeSlots, maxSlots: slots.max, ready: true, missing: [], suggestion };
   }
 
-  return { cargoTargetForRank1Points, buildAdvisory };
+  return { cargoTargetForRank1Points, hasExpeditionFleet, buildAdvisory };
 });

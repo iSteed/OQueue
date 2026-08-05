@@ -16,6 +16,7 @@
         Panel: require('./panel'),
         Dom: require('./dom'),
         Notify: require('./notify'),
+        Cleanup: require('./cleanup'),
       }
     );
   } else {
@@ -158,7 +159,8 @@
         statusMessage = 'Could not read expedition slots on this page.';
       } else {
         const rank1 = store.getRank1Points();
-        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null);
+        const shipCounts = OQueue.Dom.readShipCounts(doc);
+        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null, shipCounts);
         if (!advisory) statusMessage = `All expedition slots active (${slots.used}/${slots.max}) ✓`;
       }
       panel.render({ title, showQueue: false, expeditionAdvisory: advisory, statusMessage, toast });
@@ -270,6 +272,7 @@
 
     let pollTimer = null;
     function start() {
+      OQueue.Cleanup.apply(doc);
       panel.mount(doc.body);
       refresh();
       OQueue.Dom.watchConstructionBox(doc, refresh);

@@ -207,11 +207,18 @@
         if (vm.expeditionAdvisory) {
           const a = vm.expeditionAdvisory;
           const slotWord = a.freeSlots === 1 ? 'slot' : 'slots';
-          body.appendChild(
-            el('div', { class: 'current', text: `🚀 Launch expedition (${a.freeSlots}/${a.maxSlots} ${slotWord} free)` })
-          );
-          if (a.suggestion) {
-            body.appendChild(el('div', { class: 'upcoming', text: a.suggestion }));
+          if (a.ready) {
+            body.appendChild(
+              el('div', { class: 'current', text: `🚀 Launch expedition (${a.freeSlots}/${a.maxSlots} ${slotWord} free)` })
+            );
+            if (a.suggestion) {
+              body.appendChild(el('div', { class: 'upcoming', text: a.suggestion }));
+            }
+          } else {
+            body.appendChild(
+              el('div', { class: 'upcoming-label', text: `${a.freeSlots}/${a.maxSlots} ${slotWord} free` })
+            );
+            body.appendChild(el('div', { class: 'upcoming', text: `Still need: ${a.missing.join(', ')}` }));
           }
         } else if (vm.statusMessage) {
           body.appendChild(el('div', { class: 'upcoming', text: vm.statusMessage }));
