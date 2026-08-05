@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.5.0
+// @version      0.6.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @updateURL    https://raw.githubusercontent.com/iSteed/OQueue/main/ogame-build-queue.user.js
 // @downloadURL  https://raw.githubusercontent.com/iSteed/OQueue/main/ogame-build-queue.user.js
 // ==/UserScript==
@@ -608,6 +610,18 @@
  *                                  expedition cargo advisory (see
  *                                  expeditions.js) has a number to work with
  *                                  even on pages that aren't the highscore page.
+ *
+ * Templates use a separate backend from everything else above. Every other
+ * key is legitimately per-server (planet/tech levels don't mean anything
+ * across servers), so plain localStorage (scoped per-origin, i.e. per
+ * subdomain like s276-en vs s275-en) is correct for those. Templates are
+ * just saved rule/list definitions with no server-specific data in them, so
+ * a player who plays multiple universes reasonably expects to reuse them
+ * across servers - that needs storage scoped to the whole script, not to one
+ * origin. Tampermonkey's GM_getValue/GM_setValue (grant added in build.js)
+ * provide exactly that, and are synchronous like everything else here, so
+ * they drop in without changing any calling code's shape. Falls back to the
+ * regular backend when GM_* isn't available (Node tests, @grant none).
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -645,11 +659,29 @@
     return memoryBackend();
   }
 
-  function createStore(backend) {
-    const be = backend || defaultBackend();
+  // Cross-server backend for templates - see file header. Returns null (not
+  // a fallback) when GM_getValue/GM_setValue aren't in scope, so callers can
+  // tell "no GM support" apart from "GM support that happens to be empty".
+  function gmBackend() {
+    if (typeof GM_getValue !== 'function' || typeof GM_setValue !== 'function') return null;
+    return {
+      getItem: (k) => {
+        const v = GM_getValue(k);
+        return v === undefined || v === null ? null : v;
+      },
+      setItem: (k, v) => GM_setValue(k, v),
+      removeItem: (k) => {
+        if (typeof GM_deleteValue === 'function') GM_deleteValue(k);
+      },
+    };
+  }
 
-    function readJSON(key, fallback) {
-      const raw = be.getItem(key);
+  function createStore(backend, templatesBackend) {
+    const be = backend || defaultBackend();
+    const tbe = templatesBackend || gmBackend() || be;
+
+    function readJSON(store, key, fallback) {
+      const raw = store.getItem(key);
       if (raw == null) return fallback;
       try {
         return JSON.parse(raw);
@@ -658,16 +690,16 @@
       }
     }
 
-    function writeJSON(key, value) {
-      be.setItem(key, JSON.stringify(value));
+    function writeJSON(store, key, value) {
+      store.setItem(key, JSON.stringify(value));
     }
 
     function getPlanetState(planetId) {
-      return readJSON(PLANET_PREFIX + planetId, defaultQueueState());
+      return readJSON(be, PLANET_PREFIX + planetId, defaultQueueState());
     }
 
     function setPlanetState(planetId, state) {
-      writeJSON(PLANET_PREFIX + planetId, state);
+      writeJSON(be, PLANET_PREFIX + planetId, state);
     }
 
     function updatePlanetState(planetId, patch) {
@@ -678,11 +710,11 @@
     }
 
     function getLifeformState(planetId) {
-      return readJSON(LIFEFORM_PREFIX + planetId, defaultQueueState());
+      return readJSON(be, LIFEFORM_PREFIX + planetId, defaultQueueState());
     }
 
     function setLifeformState(planetId, state) {
-      writeJSON(LIFEFORM_PREFIX + planetId, state);
+      writeJSON(be, LIFEFORM_PREFIX + planetId, state);
     }
 
     function updateLifeformState(planetId, patch) {
@@ -693,11 +725,11 @@
     }
 
     function getAccountState() {
-      return readJSON(ACCOUNT_KEY, defaultQueueState());
+      return readJSON(be, ACCOUNT_KEY, defaultQueueState());
     }
 
     function setAccountState(state) {
-      writeJSON(ACCOUNT_KEY, state);
+      writeJSON(be, ACCOUNT_KEY, state);
     }
 
     function updateAccountState(patch) {
@@ -720,30 +752,30 @@
     }
 
     function getTemplates() {
-      return readJSON(TEMPLATES_KEY, {});
+      return readJSON(tbe, TEMPLATES_KEY, {});
     }
 
     function saveTemplate(name, template) {
       const templates = getTemplates();
       templates[name] = template;
-      writeJSON(TEMPLATES_KEY, templates);
+      writeJSON(tbe, TEMPLATES_KEY, templates);
       return templates;
     }
 
     function deleteTemplate(name) {
       const templates = getTemplates();
       delete templates[name];
-      writeJSON(TEMPLATES_KEY, templates);
+      writeJSON(tbe, TEMPLATES_KEY, templates);
       return templates;
     }
 
     function getRank1Points() {
-      return readJSON(RANK1_POINTS_KEY, null);
+      return readJSON(be, RANK1_POINTS_KEY, null);
     }
 
     function setRank1Points(points) {
       const record = { points, capturedAt: Date.now() };
-      writeJSON(RANK1_POINTS_KEY, record);
+      writeJSON(be, RANK1_POINTS_KEY, record);
       return record;
     }
 
