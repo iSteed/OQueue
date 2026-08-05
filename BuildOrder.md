@@ -118,7 +118,7 @@ Order of operations:
 3. Astro 1 → colonise. Astro 3 → colonise again. Astro 4 → second expo slot.
 4. Combustion 6 + Shipyard 4 → **Large Cargo**
 5. Shielding 2 → **Recycler** (for your own debris + expo debris later)
-6. Shielding 5 + Hyperspace Drive 2 + Shipyard 5 → **Pathfinder** ← *highest-value ship unlock in this entire build* (Hyperspace Drive 1 itself requires Shielding Technology 5 - corrected from an earlier "Shielding 4" in this doc)
+6. Shielding 5 + Hyperspace Technology 3 + Hyperspace Drive 2 + Shipyard 5 → **Pathfinder** ← *highest-value ship unlock in this entire build* (Hyperspace Drive 1 itself requires both Shielding Technology 5 and Hyperspace Technology 3 - corrected from an earlier "Shielding 4" with no Hyperspace Technology prereq listed at all in this doc)
 
 **One Pathfinder in an expedition fleet doubles the find.** Get one per expedition slot as early as you can afford it. Everything else in the fleet is cargo to carry the loot.
 
@@ -342,6 +342,7 @@ IRN             → each level networks one more planet's Research Lab
 
 Combustion Drive → 6 for Large Cargo, then keep climbing for cargo speed
 Hyperspace Drive → 2 for Pathfinder, 6 for Destroyer
+Hyperspace Technology → 3 for Hyperspace Drive 1 (prereq), 8 for IRN (with Computer 8)
 Shielding 5      → Pathfinder (Hyperspace Drive 1 prereq)
 Weapons/Shield/Armour → only enough to survive expedition pirates/aliens
 Espionage        → 6–8 is plenty. Higher levels make you easier to scan.
