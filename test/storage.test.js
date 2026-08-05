@@ -113,3 +113,31 @@ test('setRank1Points / getRank1Points round-trips with a timestamp', () => {
   assert.equal(record.points, 78973266);
   assert.equal(typeof record.capturedAt, 'number');
 });
+
+test('templates use a separate backend from planet/account state when one is supplied', () => {
+  const mainBackend = memoryBackend();
+  const templatesBackend = memoryBackend();
+  const store = createStore(mainBackend, templatesBackend);
+
+  store.setPlanetState('123', { mode: 'list', list: [{ code: 'M', level: 1 }], rule: null, cachedLevels: {}, done: [] });
+  store.saveTemplate('New Colony', { mode: 'list', list: [{ code: 'M', level: 1 }] });
+
+  // Template landed in its own backend, not the main one - so a store built
+  // on the main backend alone (simulating a different server's localStorage)
+  // wouldn't see planet state bleed into the shared template backend either.
+  assert.ok(templatesBackend.getItem('oqueue:templates'));
+  assert.equal(mainBackend.getItem('oqueue:templates'), null);
+
+  // A second store sharing only the templates backend (simulating a
+  // different server that still shares Tampermonkey's GM storage) sees the
+  // same template, proving templates are reachable across "servers".
+  const otherServerStore = createStore(memoryBackend(), templatesBackend);
+  assert.ok(otherServerStore.getTemplates()['New Colony']);
+  assert.deepEqual(otherServerStore.getPlanetState('123'), { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] });
+});
+
+test('templates fall back to the main backend when no separate templates backend is given (e.g. @grant none)', () => {
+  const store = freshStore();
+  store.saveTemplate('New Colony', { mode: 'list', list: [] });
+  assert.ok(store.getTemplates()['New Colony']);
+});

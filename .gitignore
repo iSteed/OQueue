@@ -1,1 +1,5 @@
 node_modules/
+
+# Local backup of the raw oqueue:templates payload (see storage.js) - personal
+# game data, never something to commit.
+templates.backup.json
