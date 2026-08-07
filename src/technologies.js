@@ -22,11 +22,11 @@
   'use strict';
 
   const TECHNOLOGIES = {
-    EP: { id: 108, name: 'Espionage Technology' },
-    CT: { id: 109, name: 'Computer Technology' },
-    WT: { id: 110, name: 'Weapons Technology' },
-    ST: { id: 111, name: 'Shielding Technology' },
-    AT: { id: 112, name: 'Armour Technology' },
+    EP: { id: 106, name: 'Espionage Technology' },
+    CT: { id: 108, name: 'Computer Technology' },
+    WT: { id: 109, name: 'Weapons Technology' },
+    ST: { id: 110, name: 'Shielding Technology' },
+    AT: { id: 111, name: 'Armour Technology' },
     EN: { id: 113, name: 'Energy Technology' },
     HT: { id: 114, name: 'Hyperspace Technology' },
     CD: { id: 115, name: 'Combustion Drive' },
