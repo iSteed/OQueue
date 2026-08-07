@@ -135,6 +135,7 @@
 
     let editMode = false;
     let lastViewModel = null;
+    let lastRenderKey = null;
 
     function makeDragHandlers(headerEl, panelEl) {
       let dragging = false;
@@ -157,6 +158,12 @@
     }
 
     function renderChrome(vm, body) {
+      // Preserve scroll position across a rebuild - the body is torn down
+      // and recreated below, which would otherwise snap an in-progress
+      // scroll back to the top every time.
+      const prevBody = root.querySelector('.body');
+      const scrollTop = prevBody ? prevBody.scrollTop : 0;
+
       root.innerHTML = '';
       const header = el('div', { class: 'header' }, [
         el('span', { text: vm.title || 'Colony Queue' }),
@@ -166,6 +173,7 @@
       root.appendChild(header);
       makeDragHandlers(header, root);
       root.appendChild(body);
+      body.scrollTop = scrollTop;
     }
 
     // Builds the edit view once, on entry - never rebuilt by a background
@@ -181,10 +189,12 @@
       ]);
       saveRow.children[0].addEventListener('click', () => {
         editMode = false;
+        lastRenderKey = null;
         emit('importSave', textarea.value);
       });
       saveRow.children[1].addEventListener('click', () => {
         editMode = false;
+        lastRenderKey = null;
         render(lastViewModel);
       });
       body.appendChild(saveRow);
@@ -197,6 +207,15 @@
       // edit view depends on live data, and rebuilding it on every poll tick
       // would wipe out whatever they're mid-typing/pasting.
       if (editMode) return;
+
+      // The construction-box MutationObserver fires on every countdown tick
+      // (roughly once a second) even though the queue itself hasn't changed.
+      // Rebuilding the whole panel on each of those calls would reset scroll
+      // position and interrupt clicks/selection, so skip the rebuild when the
+      // view model is identical to what's already on screen.
+      const renderKey = JSON.stringify(vm);
+      if (renderKey === lastRenderKey) return;
+      lastRenderKey = renderKey;
 
       const body = el('div', { class: 'body' });
 

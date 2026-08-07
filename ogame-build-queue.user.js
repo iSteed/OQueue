@@ -129,11 +129,11 @@
   'use strict';
 
   const TECHNOLOGIES = {
-    EP: { id: 108, name: 'Espionage Technology' },
-    CT: { id: 109, name: 'Computer Technology' },
-    WT: { id: 110, name: 'Weapons Technology' },
-    ST: { id: 111, name: 'Shielding Technology' },
-    AT: { id: 112, name: 'Armour Technology' },
+    EP: { id: 106, name: 'Espionage Technology' },
+    CT: { id: 108, name: 'Computer Technology' },
+    WT: { id: 109, name: 'Weapons Technology' },
+    ST: { id: 110, name: 'Shielding Technology' },
+    AT: { id: 111, name: 'Armour Technology' },
     EN: { id: 113, name: 'Energy Technology' },
     HT: { id: 114, name: 'Hyperspace Technology' },
     CD: { id: 115, name: 'Combustion Drive' },
@@ -1342,10 +1342,10 @@
         { code: 'EN', id: 113, name: 'Energy Technology', level: 1 },
         { code: 'CD', id: 115, name: 'Combustion Drive', level: 1 },
         { code: 'CD', id: 115, name: 'Combustion Drive', level: 2 },
-        { code: 'EP', id: 108, name: 'Espionage Technology', level: 1 },
-        { code: 'EP', id: 108, name: 'Espionage Technology', level: 4 },
-        { code: 'CT', id: 109, name: 'Computer Technology', level: 1 },
-        { code: 'CT', id: 109, name: 'Computer Technology', level: 2 },
+        { code: 'EP', id: 106, name: 'Espionage Technology', level: 1 },
+        { code: 'EP', id: 106, name: 'Espionage Technology', level: 4 },
+        { code: 'CT', id: 108, name: 'Computer Technology', level: 1 },
+        { code: 'CT', id: 108, name: 'Computer Technology', level: 2 },
         { code: 'ID', id: 117, name: 'Impulse Drive', level: 1 },
         { code: 'ID', id: 117, name: 'Impulse Drive', level: 2 },
         { code: 'ID', id: 117, name: 'Impulse Drive', level: 3 },
@@ -1353,11 +1353,11 @@
         { code: 'AP', id: 124, name: 'Astrophysics', level: 3 },
         { code: 'AP', id: 124, name: 'Astrophysics', level: 4 },
         { code: 'CD', id: 115, name: 'Combustion Drive', level: 6 },
-        { code: 'ST', id: 111, name: 'Shielding Technology', level: 2 },
-        { code: 'ST', id: 111, name: 'Shielding Technology', level: 5 },
+        { code: 'ST', id: 110, name: 'Shielding Technology', level: 2 },
+        { code: 'ST', id: 110, name: 'Shielding Technology', level: 5 },
         { code: 'HT', id: 114, name: 'Hyperspace Technology', level: 3 },
         { code: 'HD', id: 118, name: 'Hyperspace Drive', level: 2 },
-        { code: 'CT', id: 109, name: 'Computer Technology', level: 8 },
+        { code: 'CT', id: 108, name: 'Computer Technology', level: 8 },
         { code: 'HT', id: 114, name: 'Hyperspace Technology', level: 8 },
         { code: 'IRN', id: 123, name: 'Intergalactic Research Network', level: 1 },
         { code: 'EN', id: 113, name: 'Energy Technology', level: 8 },
@@ -1581,6 +1581,7 @@
 
     let editMode = false;
     let lastViewModel = null;
+    let lastRenderKey = null;
 
     function makeDragHandlers(headerEl, panelEl) {
       let dragging = false;
@@ -1603,6 +1604,12 @@
     }
 
     function renderChrome(vm, body) {
+      // Preserve scroll position across a rebuild - the body is torn down
+      // and recreated below, which would otherwise snap an in-progress
+      // scroll back to the top every time.
+      const prevBody = root.querySelector('.body');
+      const scrollTop = prevBody ? prevBody.scrollTop : 0;
+
       root.innerHTML = '';
       const header = el('div', { class: 'header' }, [
         el('span', { text: vm.title || 'Colony Queue' }),
@@ -1612,6 +1619,7 @@
       root.appendChild(header);
       makeDragHandlers(header, root);
       root.appendChild(body);
+      body.scrollTop = scrollTop;
     }
 
     // Builds the edit view once, on entry - never rebuilt by a background
@@ -1627,10 +1635,12 @@
       ]);
       saveRow.children[0].addEventListener('click', () => {
         editMode = false;
+        lastRenderKey = null;
         emit('importSave', textarea.value);
       });
       saveRow.children[1].addEventListener('click', () => {
         editMode = false;
+        lastRenderKey = null;
         render(lastViewModel);
       });
       body.appendChild(saveRow);
@@ -1643,6 +1653,15 @@
       // edit view depends on live data, and rebuilding it on every poll tick
       // would wipe out whatever they're mid-typing/pasting.
       if (editMode) return;
+
+      // The construction-box MutationObserver fires on every countdown tick
+      // (roughly once a second) even though the queue itself hasn't changed.
+      // Rebuilding the whole panel on each of those calls would reset scroll
+      // position and interrupt clicks/selection, so skip the rebuild when the
+      // view model is identical to what's already on screen.
+      const renderKey = JSON.stringify(vm);
+      if (renderKey === lastRenderKey) return;
+      lastRenderKey = renderKey;
 
       const body = el('div', { class: 'body' });
 
