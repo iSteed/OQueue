@@ -2162,6 +2162,204 @@
   return { apply, CSS, STYLE_ID, HEADER_MERCHANT_ID };
 });
 
+// ---- roi.js ------------------------------------------------------
+/*
+ * ROI math for the Supplies-page mine overlay: estimates hours-to-payback
+ * for upgrading Metal Mine / Crystal Mine / Deuterium Synthesizer one level,
+ * from cost and production formulas alone (no live-page reads required).
+ *
+ * NEEDS VERIFICATION, same category as formulas.js's energy numbers: the
+ * base costs/factors and the mine production formula below are the
+ * standard values widely published across community OGame calculators, not
+ * yet checked against this account's own numbers. Confirm against a real
+ * account (queue a mine level, compare the game's own displayed cost to
+ * costForLevel() below) before trusting the badge at a glance.
+ *
+ * Deliberately simplified in two ways:
+ *   - Only weighs the resource a mine actually produces against its own
+ *     cost in that same resource (e.g. Crystal Mine's metal cost isn't
+ *     factored in) - this is a "does the upgrade pay for itself in kind"
+ *     number, not a full opportunity-cost model across all three resources.
+ *   - Assumes economy speed 1x by default. Pass `options.speed` (your
+ *     universe's economy speed multiplier) for an accurate number - on an
+ *     8x uni, real payback is ~8x faster than the default assumes.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.Roi = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // code -> base cost + per-level growth factor. Cost of level N (going
+  // from N-1 to N) is base * factor^(N-1).
+  const BUILDING_COSTS = {
+    M: { metal: 60, crystal: 15, deuterium: 0, factor: 1.5 },
+    C: { metal: 48, crystal: 24, deuterium: 0, factor: 1.6 },
+    D: { metal: 225, crystal: 75, deuterium: 0, factor: 1.5 },
+  };
+
+  // code -> production/hr formula base. All three mines share the same
+  // shape (base * level * 1.1^level); Deuterium Synthesizer also scales
+  // with planet temperature.
+  const PRODUCTION_BASE = { M: 30, C: 20, D: 10 };
+
+  const RESOURCE_KEY = { M: 'metal', C: 'crystal', D: 'deuterium' };
+
+  function costForLevel(code, level) {
+    const spec = BUILDING_COSTS[code];
+    if (!spec) return null;
+    const factorPow = Math.pow(spec.factor, level - 1);
+    return {
+      metal: Math.round(spec.metal * factorPow),
+      crystal: Math.round(spec.crystal * factorPow),
+      deuterium: Math.round(spec.deuterium * factorPow),
+    };
+  }
+
+  // options.speed: economy speed multiplier (default 1). options.temperature:
+  // planet's average temperature in Celsius - only used for 'D', ignored
+  // otherwise.
+  function productionPerHour(code, level, options) {
+    options = options || {};
+    const base = PRODUCTION_BASE[code];
+    if (base == null) return null;
+    const speed = options.speed || 1;
+    let value = base * level * Math.pow(1.1, level) * speed;
+    if (code === 'D') {
+      const temp = options.temperature;
+      const tempFactor = temp != null ? Math.max(1.44 - 0.004 * temp, 0) : 1;
+      value *= tempFactor;
+    }
+    return value;
+  }
+
+  // Hours to earn back the resource cost of going from currentLevel to
+  // currentLevel + 1, purely from that mine's own production increase.
+  // Returns null for anything that isn't a mine (Solar Plant, storages,
+  // etc. don't have a resource-production payback in these terms) or where
+  // the next level wouldn't actually increase production.
+  function paybackHours(code, currentLevel, options) {
+    if (!BUILDING_COSTS[code]) return null;
+    const cost = costForLevel(code, currentLevel + 1);
+    const before = productionPerHour(code, currentLevel, options);
+    const after = productionPerHour(code, currentLevel + 1, options);
+    const increase = after - before;
+    if (!(increase > 0)) return null;
+    const resourceCost = cost[RESOURCE_KEY[code]];
+    return resourceCost / increase;
+  }
+
+  return { BUILDING_COSTS, costForLevel, productionPerHour, paybackHours };
+});
+
+// ---- roiOverlay.js -----------------------------------------------
+/*
+ * Injects a small "18h"-style payback badge onto each mine tile
+ * (Metal/Crystal Mine, Deuterium Synthesizer) on the Supplies page - see
+ * roi.js for the math. Writes directly into the game's own DOM (not the
+ * shadow-DOM panel), since the badge has to sit inside OGame's own building
+ * tiles rather than float separately.
+ *
+ * UNCONFIRMED like roi.js's formulas: badge placement assumes each
+ * `li.technology` tile can take `position: relative` without breaking the
+ * page's own layout - reasonable for a floated/absolute badge, but not yet
+ * checked against a live Supplies page.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory(
+      typeof require !== 'undefined' ? require('./roi') : root.OQueue.Roi,
+      typeof require !== 'undefined' ? require('./buildings') : root.OQueue.Buildings,
+      typeof require !== 'undefined' ? require('./dom') : root.OQueue.Dom
+    );
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.RoiOverlay = factory(root.OQueue.Roi, root.OQueue.Buildings, root.OQueue.Dom);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Roi, Buildings, Dom) {
+  'use strict';
+
+  const BADGE_CLASS = 'oqueue-roi-badge';
+  const STYLE_ID = 'oqueue-roi-style';
+  const MINE_CODES = ['M', 'C', 'D'];
+
+  function ensureStyle(doc) {
+    if (doc.getElementById(STYLE_ID)) return;
+    const style = doc.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      .${BADGE_CLASS} {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        font: 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: rgba(20, 24, 28, 0.85);
+        color: #ffd479;
+        pointer-events: none;
+        z-index: 5;
+      }
+    `;
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+
+  function formatHours(hours) {
+    if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+    if (hours < 48) return `${Math.round(hours)}h`;
+    return `${Math.round(hours / 24)}d`;
+  }
+
+  // doc: live document. levels: { M, C, D } current mine levels (e.g. from
+  // Dom.readBuildingLevels). options: passed through to Roi.paybackHours -
+  // { speed, temperature }.
+  function render(doc, levels, options) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return;
+    levels = levels || {};
+    ensureStyle(doc);
+
+    MINE_CODES.forEach((code) => {
+      const level = levels[code];
+      const building = Buildings.byCode(code);
+      const row = doc.querySelector(Dom.SELECTORS.buildingRow(building.id));
+      if (!row) return;
+
+      const hours = level == null ? null : Roi.paybackHours(code, level, options);
+      let badge = row.querySelector(`.${BADGE_CLASS}`);
+
+      if (hours == null) {
+        if (badge) badge.remove();
+        return;
+      }
+
+      if (!badge) {
+        const view = doc.defaultView;
+        const position = view ? view.getComputedStyle(row).position : row.style.position;
+        if (!position || position === 'static') row.style.position = 'relative';
+        badge = doc.createElement('span');
+        badge.className = BADGE_CLASS;
+        row.appendChild(badge);
+      }
+      badge.textContent = formatHours(hours);
+      badge.title =
+        "OQueue: estimated time for this mine's own production increase to earn back this upgrade's cost";
+    });
+  }
+
+  function remove(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return;
+    doc.querySelectorAll(`.${BADGE_CLASS}`).forEach((el) => el.remove());
+  }
+
+  return { render, remove };
+});
+
 // ---- main.js -----------------------------------------------------
 /*
  * Orchestrator: wires storage, rule/list resolution, the panel, DOM readers,
@@ -2182,6 +2380,8 @@
         Dom: require('./dom'),
         Notify: require('./notify'),
         Cleanup: require('./cleanup'),
+        Roi: require('./roi'),
+        RoiOverlay: require('./roiOverlay'),
       }
     );
   } else {
@@ -2277,6 +2477,7 @@
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
     const isPlanetQueue = context.scope === 'planet';
+    const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
       isResearch || isFleet || isHighscore ? null : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
@@ -2378,6 +2579,8 @@
         const entry = (state.list || []).find((i) => labelFor(i) === view.current.label);
         if (entry) OQueue.Dom.highlightBuilding(doc, entry.id, 'oqueue-highlight');
       }
+
+      if (isSupplies) OQueue.RoiOverlay.render(doc, domLevels);
     }
 
     panel.on('done', () => {

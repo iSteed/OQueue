@@ -17,6 +17,8 @@
         Dom: require('./dom'),
         Notify: require('./notify'),
         Cleanup: require('./cleanup'),
+        Roi: require('./roi'),
+        RoiOverlay: require('./roiOverlay'),
       }
     );
   } else {
@@ -112,6 +114,7 @@
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
     const isPlanetQueue = context.scope === 'planet';
+    const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
       isResearch || isFleet || isHighscore ? null : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
@@ -213,6 +216,8 @@
         const entry = (state.list || []).find((i) => labelFor(i) === view.current.label);
         if (entry) OQueue.Dom.highlightBuilding(doc, entry.id, 'oqueue-highlight');
       }
+
+      if (isSupplies) OQueue.RoiOverlay.render(doc, domLevels);
     }
 
     panel.on('done', () => {
