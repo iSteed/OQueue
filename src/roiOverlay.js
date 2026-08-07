@@ -36,7 +36,7 @@
       .${BADGE_CLASS} {
         position: absolute;
         bottom: 2px;
-        right: 2px;
+        left: 2px;
         font: 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         padding: 1px 4px;
         border-radius: 3px;
