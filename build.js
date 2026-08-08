@@ -29,6 +29,8 @@ const FILES = [
   'dom.js',
   'notify.js',
   'cleanup.js',
+  'roi.js',
+  'roiOverlay.js',
   'main.js',
 ];
 
