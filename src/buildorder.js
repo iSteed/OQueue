@@ -84,10 +84,58 @@
     { code: 'SY', level: 6 },
   ];
 
+  // BuildOrder.md §3's "Each new colony's build order" (Metal 1-6, Solar
+  // interleaved, Crystal 1-4, Robotics 2->4, Deuterium 1-3, Shipyard 1),
+  // continued past the guide's hand-wavy "to parity with the rest of the
+  // empire" using the same community-informed ramp Balanced Economy uses -
+  // long enough to cover most of a colony's early-to-mid growth rather than
+  // stopping right after bootstrap.
+  const NEW_COLONY = [
+    { code: 'M', level: 1 }, { code: 'M', level: 2 }, { code: 'M', level: 3 },
+    { code: 'C', level: 1 },
+    { code: 'M', level: 4 }, { code: 'C', level: 2 },
+    { code: 'M', level: 5 }, { code: 'C', level: 3 },
+    { code: 'D', level: 1 },
+    { code: 'M', level: 6 }, { code: 'C', level: 4 },
+    { code: 'R', level: 2 },
+    { code: 'D', level: 2 },
+    { code: 'R', level: 3 },
+    { code: 'D', level: 3 },
+    { code: 'R', level: 4 },
+    { code: 'SY', level: 1 },
+    // Bootstrap ends here; continue toward empire parity.
+    { code: 'M', level: 8 }, { code: 'C', level: 6 },
+    { code: 'MS', level: 1 }, { code: 'CS', level: 1 },
+    { code: 'M', level: 10 }, { code: 'C', level: 8 },
+    { code: 'RL', level: 1 },
+    { code: 'D', level: 5 },
+    { code: 'M', level: 12 }, { code: 'C', level: 10 },
+    { code: 'R', level: 5 },
+    { code: 'SY', level: 2 },
+    { code: 'MS', level: 3 }, { code: 'CS', level: 3 },
+    { code: 'M', level: 14 }, { code: 'C', level: 12 },
+    { code: 'D', level: 7 },
+    { code: 'RL', level: 2 },
+    { code: 'M', level: 16 }, { code: 'C', level: 14 },
+    { code: 'R', level: 6 },
+    { code: 'SY', level: 3 },
+    { code: 'DS', level: 1 },
+    { code: 'M', level: 18 }, { code: 'C', level: 16 },
+    { code: 'D', level: 9 },
+    { code: 'MS', level: 5 }, { code: 'CS', level: 5 },
+    { code: 'RL', level: 3 },
+    { code: 'M', level: 20 }, { code: 'C', level: 18 },
+    { code: 'SY', level: 4 },
+    { code: 'D', level: 11 },
+    { code: 'RL', level: 4 },
+    { code: 'DS', level: 3 },
+  ];
+
   const PRESETS = {
     'Balanced Economy': generateBuildOrder(BALANCED_ECONOMY),
     Rusher: generateBuildOrder(RUSHER),
+    'New Colony': generateBuildOrder(NEW_COLONY),
   };
 
-  return { generateBuildOrder, BALANCED_ECONOMY, RUSHER, PRESETS };
+  return { generateBuildOrder, BALANCED_ECONOMY, RUSHER, NEW_COLONY, PRESETS };
 });

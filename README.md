@@ -159,12 +159,12 @@ Six are built in and seeded automatically per-name the first time OQueue sees a 
 
 - **Balanced Economy** — mines/storage/Robotics/Research Lab/Deuterium at a measured pace
 - **Rusher** — pushes Robotics Factory + Shipyard earlier for a faster early fleet
+- **New Colony** — bootstraps a freshly colonized planet (Metal/Crystal, Robotics 2→4, Deuterium 1→3, Shipyard 1, per BuildOrder.md §3) then keeps ramping toward empire parity — not the same queue as Homeworld Growth
 - **Homeworld Growth** — a longer late-game building queue through Terraformer/Nanite Factory
-- **New Colony** — the bootstrap queue for a freshly colonized planet (Metal/Solar/Crystal, Robotics 2→4, Deuterium 1→3, Shipyard 1) — not the same queue as Homeworld Growth; see BuildOrder.md §3
 - **Core Research** — an account-wide research queue through early Astrophysics/Hyperspace/Plasma
 - **Rock'tal Growth** — a Rock'tal lifeform-building queue through Rune Technologium/Megalith
 
-The first two are generated, not hand-typed: a small algorithm (`src/buildorder.js`) walks a priority list of targets and inserts Solar Plant level-ups automatically, exactly when the real OGame energy formulas (`src/formulas.js`) say you'd otherwise go energy-negative — so the Solar Plant timing is calculated, not guessed. The rest are concrete queue snapshots baked into `src/templates.js` (`CURATED_TEMPLATES`) rather than formula-generated; New Colony is transcribed from the BuildOrder.md guide rather than an account-verified live capture like the other three.
+The first three are generated, not hand-typed: a small algorithm (`src/buildorder.js`) walks a priority list of targets and inserts Solar Plant level-ups automatically, exactly when the real OGame energy formulas (`src/formulas.js`) say you'd otherwise go energy-negative — so the Solar Plant timing is calculated, not guessed. The last three are concrete, hand-verified queue snapshots baked into `src/templates.js` (`CURATED_TEMPLATES`) rather than formula-generated.
 
 These are also stored via `GM_getValue`/`GM_setValue` rather than `localStorage`, so they carry across every OGame server/universe you play on, not just the one where you saved them - unlike per-planet/per-account queue state, which is legitimately per-server and stays on `localStorage`.
 
