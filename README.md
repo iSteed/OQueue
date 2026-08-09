@@ -200,6 +200,12 @@ src/            source modules (one concern per file, plain UMD, zero dependenci
 test/           node --test unit tests + a couple of manual browser test harnesses
 build.js        concatenates src/*.js + a Tampermonkey metadata block into the bundle below
 ogame-build-queue.user.js   the actual distributable — install this in Tampermonkey
+scripts/        one-off dev tooling (currently just the version-bump guard below)
+githooks/       tracked git hooks, opt-in via core.hooksPath (see below)
 ```
 
 Run tests with `npm test`. DOM-dependent code (`src/dom.js`) has no automated tests — it's verified by loading the script against a real OGame session and checking behavior directly.
+
+### Version bumps
+
+Tampermonkey only re-fetches `ogame-build-queue.user.js` from `@updateURL` when `// @version` in `build.js` changes — an update pushed to `main` without a version bump silently never reaches anyone who already has the script installed, since their copy has no reason to think anything changed. `npm install` runs `git config core.hooksPath githooks` automatically, which activates a `pre-push` hook that blocks pushing to `main` if `src/` or `build.js` changed since `origin/main` without `// @version` moving. Run it by hand any time with `npm run check-version-bump`.

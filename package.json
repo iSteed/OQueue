@@ -5,6 +5,8 @@
   "description": "OGame build queue Tampermonkey userscript",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "check-version-bump": "node scripts/check-version-bump.js",
+    "postinstall": "git config core.hooksPath githooks 2>/dev/null || true"
   }
 }
