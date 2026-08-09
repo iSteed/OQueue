@@ -182,6 +182,41 @@
         { code: 'DS', id: 24, name: 'Deuterium Tank', level: 12 },
       ],
     },
+    // Not an account-verified snapshot like the others above/below - this is
+    // the "Each new colony's build order" recipe from BuildOrder.md §3,
+    // spelled out as a concrete list (interleaved Metal/Solar as in the
+    // Phase 1 opening, then Crystal, Robotics 2→4, Deuterium 1→3, Shipyard
+    // 1). Deliberately stops there: the guide's last step, "Metal/Crystal/
+    // Deut to parity with the rest of the empire," has no fixed levels to
+    // list - keep queueing mines by hand past this point once the colony
+    // catches up.
+    'New Colony': {
+      mode: 'list',
+      list: [
+        { code: 'M', id: 1, name: 'Metal Mine', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 2 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 3 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 2 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 4 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 2 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 3 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 5 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 3 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 4 },
+        { code: 'D', id: 3, name: 'Deuterium Synthesizer', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 6 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 5 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 4 },
+        { code: 'R', id: 14, name: 'Robotics Factory', level: 2 },
+        { code: 'D', id: 3, name: 'Deuterium Synthesizer', level: 2 },
+        { code: 'R', id: 14, name: 'Robotics Factory', level: 3 },
+        { code: 'D', id: 3, name: 'Deuterium Synthesizer', level: 3 },
+        { code: 'R', id: 14, name: 'Robotics Factory', level: 4 },
+        { code: 'SY', id: 21, name: 'Shipyard', level: 1 },
+      ],
+    },
     'Core Research': {
       mode: 'list',
       list: [

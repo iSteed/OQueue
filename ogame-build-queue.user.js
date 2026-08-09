@@ -110,10 +110,14 @@
  * exactly (same shape, same byCode/byId functions) since the research page
  * uses the same `data-technology`-based level pattern as buildings/facilities.
  *
- * NEEDS VERIFICATION: these ids are from public OGame knowledge, not yet
- * confirmed against a live research page the way buildings.js's ids were
- * confirmed against supplies/facilities. Confirm the same way once possible:
- * read real `data-technology` attributes on the research page.
+ * CORRECTED (2026-08-06): the first five ids (EP/CT/WT/ST/AT) were off by
+ * one-to-two from OGame's real numbering - a user report of Espionage
+ * Technology (actually level 2) reading as level 0/missing traced back to
+ * EP pointing at id 108, which is really Computer Technology's row. Fixed
+ * against OGame's known research id list: EP=106, CT=108, WT=109, ST=110,
+ * AT=111 (EN=113 onward was already correct). STILL NOT verified against a
+ * live research page's `data-technology` attributes the way buildings.js's
+ * ids were - do that confirmation once possible.
  *
  * Shorthand codes were chosen to not collide with any building code in
  * buildings.js, so the same import/edit textarea works for both.
@@ -1334,6 +1338,41 @@
         { code: 'MS', id: 22, name: 'Metal Storage', level: 15 },
         { code: 'CS', id: 23, name: 'Crystal Storage', level: 15 },
         { code: 'DS', id: 24, name: 'Deuterium Tank', level: 12 },
+      ],
+    },
+    // Not an account-verified snapshot like the others above/below - this is
+    // the "Each new colony's build order" recipe from BuildOrder.md §3,
+    // spelled out as a concrete list (interleaved Metal/Solar as in the
+    // Phase 1 opening, then Crystal, Robotics 2→4, Deuterium 1→3, Shipyard
+    // 1). Deliberately stops there: the guide's last step, "Metal/Crystal/
+    // Deut to parity with the rest of the empire," has no fixed levels to
+    // list - keep queueing mines by hand past this point once the colony
+    // catches up.
+    'New Colony': {
+      mode: 'list',
+      list: [
+        { code: 'M', id: 1, name: 'Metal Mine', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 2 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 3 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 2 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 4 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 2 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 3 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 5 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 3 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 4 },
+        { code: 'D', id: 3, name: 'Deuterium Synthesizer', level: 1 },
+        { code: 'M', id: 1, name: 'Metal Mine', level: 6 },
+        { code: 'S', id: 4, name: 'Solar Plant', level: 5 },
+        { code: 'C', id: 2, name: 'Crystal Mine', level: 4 },
+        { code: 'R', id: 14, name: 'Robotics Factory', level: 2 },
+        { code: 'D', id: 3, name: 'Deuterium Synthesizer', level: 2 },
+        { code: 'R', id: 14, name: 'Robotics Factory', level: 3 },
+        { code: 'D', id: 3, name: 'Deuterium Synthesizer', level: 3 },
+        { code: 'R', id: 14, name: 'Robotics Factory', level: 4 },
+        { code: 'SY', id: 21, name: 'Shipyard', level: 1 },
       ],
     },
     'Core Research': {
