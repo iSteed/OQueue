@@ -6,7 +6,6 @@
  *   const panel = OQueue.Panel.createPanel(document);
  *   panel.mount(document.body);
  *   panel.render(viewModel);
- *   panel.on('done', () => ...);
  *
  * viewModel shape:
  *   {
@@ -281,20 +280,25 @@
           if (select.value) emit('applyTemplate', select.value);
           select.value = '';
         });
-        body.appendChild(el('div', { class: 'actions' }, [select]));
+        // Resets any built-in template (Balanced Economy, New Colony, etc.)
+        // back to its shipped content, overwriting a locally-saved copy that
+        // predates a script update - the only way to pick up a changed
+        // default otherwise is to know its new content and re-save it by
+        // hand. No-op for templates you made up yourself (not a default).
+        const resetBtn = el('button', { text: '↻ Reset built-ins', title: 'Reset built-in templates to their shipped defaults' });
+        resetBtn.addEventListener('click', () => emit('resetTemplates'));
+        body.appendChild(el('div', { class: 'actions' }, [select, resetBtn]));
       }
 
       const actions = el('div', { class: 'actions' }, [
-        el('button', { text: 'Done' }),
         el('button', { text: 'Edit' }),
         el('button', { text: 'Save as Template' }),
       ]);
-      actions.children[0].addEventListener('click', () => emit('done'));
-      actions.children[1].addEventListener('click', () => {
+      actions.children[0].addEventListener('click', () => {
         editMode = true;
         renderEditMode(vm);
       });
-      actions.children[2].addEventListener('click', () => {
+      actions.children[1].addEventListener('click', () => {
         const name = prompt('Template name?');
         if (name) emit('saveTemplate', name);
       });

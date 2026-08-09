@@ -170,6 +170,8 @@ These are also stored via `GM_getValue`/`GM_setValue` rather than `localStorage`
 
 Use **Save as Template** in the panel to save your current queue under a new name; use the dropdown to apply any saved template to the current planet (this replaces that planet's current queue and clears its "done" history).
 
+Because a saved template is never overwritten automatically, a built-in you saved before a script update keeps its old content even after the update ships a longer/different version under the same name - applying it just hands you back what you already had. Use **↻ Reset built-ins** next to the template dropdown to force every built-in template (by name) back to its shipped default; templates you named yourself are left alone.
+
 ## Rule-based planner (advanced, list-mode only for now)
 
 Instead of a fixed list, a rule spec continuously recalculates the next target from your *current* levels — so if you build something out of the order you originally planned, it doesn't go "off by one," it just re-evaluates. This is separate from the plain shorthand list above and not yet wired into the panel's Edit box UI (see `src/rules.js` for the engine if you want to construct one programmatically).

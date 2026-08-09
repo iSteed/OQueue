@@ -9,6 +9,7 @@ const {
   applyTemplateToLifeform,
   saveLifeformStateAsTemplate,
   seedDefaultTemplates,
+  resetDefaultTemplates,
   CURATED_TEMPLATES,
 } = require('../src/templates');
 const BuildOrder = require('../src/buildorder');
@@ -124,4 +125,27 @@ test('seedDefaultTemplates is a no-op for names the user already has, even after
   seedDefaultTemplates(store);
   const templates = store.getTemplates();
   assert.equal(Object.keys(templates).length, Object.keys(BuildOrder.PRESETS).length + Object.keys(CURATED_TEMPLATES).length);
+});
+
+test('resetDefaultTemplates overwrites a stale built-in with the shipped default', () => {
+  const store = freshStore();
+  // Simulate a locally-saved copy of a built-in from before it changed upstream.
+  store.saveTemplate('New Colony', { mode: 'list', list: [{ code: 'STALE', level: 1 }] });
+
+  const names = resetDefaultTemplates(store);
+  const templates = store.getTemplates();
+
+  assert.ok(names.includes('New Colony'));
+  assert.deepEqual(templates['New Colony'], { mode: 'list', list: BuildOrder.PRESETS['New Colony'] });
+});
+
+test('resetDefaultTemplates leaves a user-made template (not a built-in name) untouched', () => {
+  const store = freshStore();
+  store.saveTemplate('My Custom Queue', { mode: 'list', list: [{ code: 'M', level: 42 }] });
+
+  const names = resetDefaultTemplates(store);
+  const templates = store.getTemplates();
+
+  assert.ok(!names.includes('My Custom Queue'));
+  assert.deepEqual(templates['My Custom Queue'], { mode: 'list', list: [{ code: 'M', level: 42 }] });
 });

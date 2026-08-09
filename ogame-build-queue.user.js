@@ -1466,6 +1466,17 @@
     },
   };
 
+  // name -> template shape, for every built-in default regardless of which
+  // of the two sources above it came from. Shared by seedDefaultTemplates
+  // (only fills in what's missing) and resetDefaultTemplates (forces every
+  // default back to this content) so the two can't drift out of sync.
+  function defaultTemplateEntries() {
+    const entries = {};
+    for (const name in BuildOrder.PRESETS) entries[name] = { mode: 'list', list: BuildOrder.PRESETS[name] };
+    for (const name in CURATED_TEMPLATES) entries[name] = CURATED_TEMPLATES[name];
+    return entries;
+  }
+
   // First-run bootstrap: backfills any curated default (BuildOrder.PRESETS
   // plus the hand-verified CURATED_TEMPLATES above) that's missing by name,
   // without touching one that already exists. Deliberately per-name rather
@@ -1478,12 +1489,24 @@
   // behavior's intent of not fighting the user's own edits).
   function seedDefaultTemplates(store) {
     const existing = store.getTemplates();
-    for (const name in BuildOrder.PRESETS) {
-      if (!existing[name]) store.saveTemplate(name, { mode: 'list', list: BuildOrder.PRESETS[name] });
+    const defaults = defaultTemplateEntries();
+    for (const name in defaults) {
+      if (!existing[name]) store.saveTemplate(name, defaults[name]);
     }
-    for (const name in CURATED_TEMPLATES) {
-      if (!existing[name]) store.saveTemplate(name, CURATED_TEMPLATES[name]);
-    }
+  }
+
+  // The opposite of seedDefaultTemplates' caution: unconditionally overwrites
+  // every built-in template with its shipped content, for when a script
+  // update changes a default (like New Colony growing from 22 to 69 steps)
+  // and a locally-saved copy from before that update needs to actually pick
+  // it up. Names that aren't a built-in default (the user's own saved
+  // templates) are left untouched. Returns the list of names reset, so
+  // callers can report how many changed.
+  function resetDefaultTemplates(store) {
+    const defaults = defaultTemplateEntries();
+    const names = Object.keys(defaults);
+    for (const name of names) store.saveTemplate(name, defaults[name]);
+    return names;
   }
 
   return {
@@ -1494,6 +1517,7 @@
     applyTemplateToLifeform,
     saveLifeformStateAsTemplate,
     seedDefaultTemplates,
+    resetDefaultTemplates,
     CURATED_TEMPLATES,
   };
 });
@@ -1507,7 +1531,6 @@
  *   const panel = OQueue.Panel.createPanel(document);
  *   panel.mount(document.body);
  *   panel.render(viewModel);
- *   panel.on('done', () => ...);
  *
  * viewModel shape:
  *   {
@@ -1782,20 +1805,25 @@
           if (select.value) emit('applyTemplate', select.value);
           select.value = '';
         });
-        body.appendChild(el('div', { class: 'actions' }, [select]));
+        // Resets any built-in template (Balanced Economy, New Colony, etc.)
+        // back to its shipped content, overwriting a locally-saved copy that
+        // predates a script update - the only way to pick up a changed
+        // default otherwise is to know its new content and re-save it by
+        // hand. No-op for templates you made up yourself (not a default).
+        const resetBtn = el('button', { text: '↻ Reset built-ins', title: 'Reset built-in templates to their shipped defaults' });
+        resetBtn.addEventListener('click', () => emit('resetTemplates'));
+        body.appendChild(el('div', { class: 'actions' }, [select, resetBtn]));
       }
 
       const actions = el('div', { class: 'actions' }, [
-        el('button', { text: 'Done' }),
         el('button', { text: 'Edit' }),
         el('button', { text: 'Save as Template' }),
       ]);
-      actions.children[0].addEventListener('click', () => emit('done'));
-      actions.children[1].addEventListener('click', () => {
+      actions.children[0].addEventListener('click', () => {
         editMode = true;
         renderEditMode(vm);
       });
-      actions.children[2].addEventListener('click', () => {
+      actions.children[1].addEventListener('click', () => {
         const name = prompt('Template name?');
         if (name) emit('saveTemplate', name);
       });
@@ -2433,7 +2461,6 @@
         Templates: require('./templates'),
         Panel: require('./panel'),
         Dom: require('./dom'),
-        Notify: require('./notify'),
         Cleanup: require('./cleanup'),
         Roi: require('./roi'),
         RoiOverlay: require('./roiOverlay'),
@@ -2638,22 +2665,6 @@
       if (isSupplies) OQueue.RoiOverlay.render(doc, domLevels);
     }
 
-    panel.on('done', () => {
-      const state = getState();
-      const list = state.list || [];
-      const idx = list.findIndex((item) => (state.cachedLevels[item.code] || 0) < item.level);
-      if (idx >= 0) {
-        const completed = list[idx];
-        state.cachedLevels[completed.code] = completed.level;
-        state.done = (state.done || []).concat(labelFor(completed));
-        setState(state);
-        const next = list[idx + 1];
-        const { body } = OQueue.Notify.notifyBuildComplete(completed.name, next ? labelFor(next) : null);
-        toast = body;
-      }
-      refresh();
-    });
-
     panel.on('importSave', (text) => {
       const species = isLifeform ? activeSpecies() : DEFAULT_LIFEFORM_SPECIES;
       const { list, errors } = OQueue.Import.parseImportText(text, species);
@@ -2700,6 +2711,16 @@
       panel.on('saveTemplate', (name) => {
         OQueue.Templates.saveLifeformStateAsTemplate(store, planetId, name);
         toast = `Saved template "${name}"`;
+        refresh();
+      });
+    }
+
+    // The template store is shared across scopes, so one handler covers
+    // planet/research/lifeform panels alike.
+    if (isPlanetQueue || isResearch || isLifeform) {
+      panel.on('resetTemplates', () => {
+        const names = OQueue.Templates.resetDefaultTemplates(store);
+        toast = `Reset ${names.length} built-in template${names.length === 1 ? '' : 's'} to default`;
         refresh();
       });
     }

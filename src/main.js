@@ -15,7 +15,6 @@
         Templates: require('./templates'),
         Panel: require('./panel'),
         Dom: require('./dom'),
-        Notify: require('./notify'),
         Cleanup: require('./cleanup'),
         Roi: require('./roi'),
         RoiOverlay: require('./roiOverlay'),
@@ -220,22 +219,6 @@
       if (isSupplies) OQueue.RoiOverlay.render(doc, domLevels);
     }
 
-    panel.on('done', () => {
-      const state = getState();
-      const list = state.list || [];
-      const idx = list.findIndex((item) => (state.cachedLevels[item.code] || 0) < item.level);
-      if (idx >= 0) {
-        const completed = list[idx];
-        state.cachedLevels[completed.code] = completed.level;
-        state.done = (state.done || []).concat(labelFor(completed));
-        setState(state);
-        const next = list[idx + 1];
-        const { body } = OQueue.Notify.notifyBuildComplete(completed.name, next ? labelFor(next) : null);
-        toast = body;
-      }
-      refresh();
-    });
-
     panel.on('importSave', (text) => {
       const species = isLifeform ? activeSpecies() : DEFAULT_LIFEFORM_SPECIES;
       const { list, errors } = OQueue.Import.parseImportText(text, species);
@@ -282,6 +265,16 @@
       panel.on('saveTemplate', (name) => {
         OQueue.Templates.saveLifeformStateAsTemplate(store, planetId, name);
         toast = `Saved template "${name}"`;
+        refresh();
+      });
+    }
+
+    // The template store is shared across scopes, so one handler covers
+    // planet/research/lifeform panels alike.
+    if (isPlanetQueue || isResearch || isLifeform) {
+      panel.on('resetTemplates', () => {
+        const names = OQueue.Templates.resetDefaultTemplates(store);
+        toast = `Reset ${names.length} built-in template${names.length === 1 ? '' : 's'} to default`;
         refresh();
       });
     }

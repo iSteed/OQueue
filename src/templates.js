@@ -257,6 +257,17 @@
     },
   };
 
+  // name -> template shape, for every built-in default regardless of which
+  // of the two sources above it came from. Shared by seedDefaultTemplates
+  // (only fills in what's missing) and resetDefaultTemplates (forces every
+  // default back to this content) so the two can't drift out of sync.
+  function defaultTemplateEntries() {
+    const entries = {};
+    for (const name in BuildOrder.PRESETS) entries[name] = { mode: 'list', list: BuildOrder.PRESETS[name] };
+    for (const name in CURATED_TEMPLATES) entries[name] = CURATED_TEMPLATES[name];
+    return entries;
+  }
+
   // First-run bootstrap: backfills any curated default (BuildOrder.PRESETS
   // plus the hand-verified CURATED_TEMPLATES above) that's missing by name,
   // without touching one that already exists. Deliberately per-name rather
@@ -269,12 +280,24 @@
   // behavior's intent of not fighting the user's own edits).
   function seedDefaultTemplates(store) {
     const existing = store.getTemplates();
-    for (const name in BuildOrder.PRESETS) {
-      if (!existing[name]) store.saveTemplate(name, { mode: 'list', list: BuildOrder.PRESETS[name] });
+    const defaults = defaultTemplateEntries();
+    for (const name in defaults) {
+      if (!existing[name]) store.saveTemplate(name, defaults[name]);
     }
-    for (const name in CURATED_TEMPLATES) {
-      if (!existing[name]) store.saveTemplate(name, CURATED_TEMPLATES[name]);
-    }
+  }
+
+  // The opposite of seedDefaultTemplates' caution: unconditionally overwrites
+  // every built-in template with its shipped content, for when a script
+  // update changes a default (like New Colony growing from 22 to 69 steps)
+  // and a locally-saved copy from before that update needs to actually pick
+  // it up. Names that aren't a built-in default (the user's own saved
+  // templates) are left untouched. Returns the list of names reset, so
+  // callers can report how many changed.
+  function resetDefaultTemplates(store) {
+    const defaults = defaultTemplateEntries();
+    const names = Object.keys(defaults);
+    for (const name of names) store.saveTemplate(name, defaults[name]);
+    return names;
   }
 
   return {
@@ -285,6 +308,7 @@
     applyTemplateToLifeform,
     saveLifeformStateAsTemplate,
     seedDefaultTemplates,
+    resetDefaultTemplates,
     CURATED_TEMPLATES,
   };
 });
