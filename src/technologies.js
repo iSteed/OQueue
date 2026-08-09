@@ -3,10 +3,14 @@
  * exactly (same shape, same byCode/byId functions) since the research page
  * uses the same `data-technology`-based level pattern as buildings/facilities.
  *
- * NEEDS VERIFICATION: these ids are from public OGame knowledge, not yet
- * confirmed against a live research page the way buildings.js's ids were
- * confirmed against supplies/facilities. Confirm the same way once possible:
- * read real `data-technology` attributes on the research page.
+ * CORRECTED (2026-08-06): the first five ids (EP/CT/WT/ST/AT) were off by
+ * one-to-two from OGame's real numbering - a user report of Espionage
+ * Technology (actually level 2) reading as level 0/missing traced back to
+ * EP pointing at id 108, which is really Computer Technology's row. Fixed
+ * against OGame's known research id list: EP=106, CT=108, WT=109, ST=110,
+ * AT=111 (EN=113 onward was already correct). STILL NOT verified against a
+ * live research page's `data-technology` attributes the way buildings.js's
+ * ids were - do that confirmation once possible.
  *
  * Shorthand codes were chosen to not collide with any building code in
  * buildings.js, so the same import/edit textarea works for both.
@@ -22,11 +26,11 @@
   'use strict';
 
   const TECHNOLOGIES = {
-    EP: { id: 108, name: 'Espionage Technology' },
-    CT: { id: 109, name: 'Computer Technology' },
-    WT: { id: 110, name: 'Weapons Technology' },
-    ST: { id: 111, name: 'Shielding Technology' },
-    AT: { id: 112, name: 'Armour Technology' },
+    EP: { id: 106, name: 'Espionage Technology' },
+    CT: { id: 108, name: 'Computer Technology' },
+    WT: { id: 109, name: 'Weapons Technology' },
+    ST: { id: 110, name: 'Shielding Technology' },
+    AT: { id: 111, name: 'Armour Technology' },
     EN: { id: 113, name: 'Energy Technology' },
     HT: { id: 114, name: 'Hyperspace Technology' },
     CD: { id: 115, name: 'Combustion Drive' },
