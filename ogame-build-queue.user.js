@@ -488,6 +488,13 @@
   // empire" using the same community-informed ramp Balanced Economy uses -
   // long enough to cover most of a colony's early-to-mid growth rather than
   // stopping right after bootstrap.
+  // No Research Lab targets in here on purpose: per BuildOrder.md's
+  // research-priority table, "Only networked labs count" - a colony's lab
+  // does nothing for research speed until Intergalactic Research Network
+  // reaches it (Computer Tech 8 + Hyperspace Tech 8, homeworld-first). This
+  // generator has no way to know whether IRN is up on your account, so it
+  // leaves Research Lab out entirely rather than guess - add it by hand
+  // once IRN covers this colony.
   const NEW_COLONY = [
     { code: 'M', level: 1 }, { code: 'M', level: 2 }, { code: 'M', level: 3 },
     { code: 'C', level: 1 },
@@ -505,7 +512,6 @@
     { code: 'M', level: 8 }, { code: 'C', level: 6 },
     { code: 'MS', level: 1 }, { code: 'CS', level: 1 },
     { code: 'M', level: 10 }, { code: 'C', level: 8 },
-    { code: 'RL', level: 1 },
     { code: 'D', level: 5 },
     { code: 'M', level: 12 }, { code: 'C', level: 10 },
     { code: 'R', level: 5 },
@@ -513,7 +519,6 @@
     { code: 'MS', level: 3 }, { code: 'CS', level: 3 },
     { code: 'M', level: 14 }, { code: 'C', level: 12 },
     { code: 'D', level: 7 },
-    { code: 'RL', level: 2 },
     { code: 'M', level: 16 }, { code: 'C', level: 14 },
     { code: 'R', level: 6 },
     { code: 'SY', level: 3 },
@@ -521,11 +526,9 @@
     { code: 'M', level: 18 }, { code: 'C', level: 16 },
     { code: 'D', level: 9 },
     { code: 'MS', level: 5 }, { code: 'CS', level: 5 },
-    { code: 'RL', level: 3 },
     { code: 'M', level: 20 }, { code: 'C', level: 18 },
     { code: 'SY', level: 4 },
     { code: 'D', level: 11 },
-    { code: 'RL', level: 4 },
     { code: 'DS', level: 3 },
   ];
 
