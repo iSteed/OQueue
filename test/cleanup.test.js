@@ -90,8 +90,8 @@ test('apply inserts a Merchant link into the header bar, right before Log out', 
   const headerLinks = fakeHeaderLinks(['Profile', 'Highscore', 'Support', 'Log out']);
   doc._register({ id: 'headerBarLinks', ...headerLinks });
   doc._registerQuery(
-    '#menuTable a.premiumHighligt[href*="component=traderOverview"]',
-    { href: 'https://s275-en.ogame.gameforge.com/game/index.php?page=ingame&component=traderOverview' }
+    '#menuTable a.premiumHighligt[href*="component=trader"]',
+    { href: 'https://s275-en.ogame.gameforge.com/game/index.php?page=ingame&component=trader' }
   );
 
   apply(doc);
@@ -100,7 +100,7 @@ test('apply inserts a Merchant link into the header bar, right before Log out', 
   const merchantSpan = registeredHeaderLinks.children.find((c) => c.id === HEADER_MERCHANT_ID);
   assert.ok(merchantSpan, 'Merchant span was inserted');
   assert.equal(merchantSpan.children[0].textContent, 'Merchant');
-  assert.equal(merchantSpan.children[0].href, 'https://s275-en.ogame.gameforge.com/game/index.php?page=ingame&component=traderOverview');
+  assert.equal(merchantSpan.children[0].href, 'https://s275-en.ogame.gameforge.com/game/index.php?page=ingame&component=trader');
   // Landed immediately before the Log out span, not appended at the end.
   const idx = registeredHeaderLinks.children.indexOf(merchantSpan);
   assert.equal(registeredHeaderLinks.children[idx + 1].textContent, 'Log out');
@@ -111,8 +111,8 @@ test('apply does not insert a Merchant link into the header bar twice', () => {
   const headerLinks = fakeHeaderLinks(['Support', 'Log out']);
   doc._register({ id: 'headerBarLinks', ...headerLinks });
   doc._registerQuery(
-    '#menuTable a.premiumHighligt[href*="component=traderOverview"]',
-    { href: 'https://s275-en.ogame.gameforge.com/game/index.php?page=ingame&component=traderOverview' }
+    '#menuTable a.premiumHighligt[href*="component=trader"]',
+    { href: 'https://s275-en.ogame.gameforge.com/game/index.php?page=ingame&component=trader' }
   );
 
   apply(doc);

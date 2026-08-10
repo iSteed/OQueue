@@ -20,6 +20,17 @@
  *     The user asked for Merchant specifically (not Recruit
  *     Officers/Shop/Rewards) moved there, since they still want to use it
  *     despite it being a premium-upsell-styled nav item.
+ *
+ * CORRECTED (2026-08-10, server s275-en, real page source): the Merchant
+ * `<a class="menubutton premiumHighligt ...">` under #menuTable actually
+ * has `href=".../index.php?page=ingame&component=trader"` - the original
+ * selector below looked for `component=traderOverview` instead, which is
+ * the CSS class (`menuImage traderOverview`) on a *different*, smaller
+ * icon-link next to it, not a URL parameter that ever existed. That typo
+ * meant relocateMerchantLink's querySelector always missed and silently
+ * no-op'd (by design, for accounts where the item genuinely isn't there -
+ * indistinguishable from "selector is just wrong" without live HTML,
+ * which is what it took to catch this).
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -45,7 +56,7 @@
     if (doc.getElementById(HEADER_MERCHANT_ID)) return;
     const headerLinks = doc.getElementById('headerBarLinks');
     if (!headerLinks) return;
-    const merchantLink = doc.querySelector('#menuTable a.premiumHighligt[href*="component=traderOverview"]');
+    const merchantLink = doc.querySelector('#menuTable a.premiumHighligt[href*="component=trader"]');
     if (!merchantLink) return;
     const logoutSpan = Array.from(headerLinks.children).find((span) => /log ?out/i.test(span.textContent));
     if (!logoutSpan) return;
