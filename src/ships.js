@@ -54,5 +54,41 @@
     return { code: entry.code, id, name: entry.name };
   }
 
-  return { SHIPS, byCode, byId };
+  // Expedition points per ship, straight from BuildOrder.md section 10's
+  // "Fleet composition" table for the 9 ships it lists explicitly. PF and
+  // RPR aren't in that table, so they're derived from the doc's own
+  // formula instead of guessed: points = (metal cost + crystal cost) x
+  // 5 / 1000, using each ship's known build cost (deuterium doesn't count).
+  // Verified the formula reproduces every one of the doc's 9 listed values
+  // exactly before trusting it for these two:
+  //   PF:  (8,000 metal + 15,000 crystal) x 5 / 1000 = 115
+  //   RPR: (85,000 metal + 55,000 crystal) x 5 / 1000 = 700
+  // DTH/COL/RCY are explicitly called out in the doc as contributing
+  // nothing to an expedition ("never send them") - 0 here reflects the
+  // game's own exclusion, not a gap in the formula.
+  const EXPO_POINTS = {
+    PRB: 5,
+    SC: 20,
+    LF: 20,
+    HF: 50,
+    LC: 60,
+    CRU: 135,
+    BS: 300,
+    BC: 350,
+    BM: 375,
+    DES: 550,
+    PF: 115,
+    RPR: 700,
+    DTH: 0,
+    COL: 0,
+    RCY: 0,
+  };
+
+  function expoPointsFor(code) {
+    const upper = code.toUpperCase();
+    if (!(upper in EXPO_POINTS)) throw new Error(`No expedition point value for ship shorthand: ${code}`);
+    return EXPO_POINTS[upper];
+  }
+
+  return { SHIPS, byCode, byId, EXPO_POINTS, expoPointsFor };
 });
