@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { cargoTargetForRank1Points, hasExpeditionFleet, suggestLoadout, formatLoadout, buildAdvisory } = require('../src/expeditions');
+const {
+  cargoTargetForRank1Points,
+  hasExpeditionFleet,
+  suggestLoadout,
+  formatLoadout,
+  buildAdvisory,
+  ASSUMED_MAX_RANK1_POINTS,
+} = require('../src/expeditions');
 
 const READY_FLEET = { PF: 1, PRB: 1, LC: 30 };
 
@@ -110,6 +117,10 @@ test('buildAdvisory: flags a shortfall in the suggestion when the hangar can\'t 
   const advisory = buildAdvisory({ used: 0, max: 1 }, 500000, { PF: 1, PRB: 1, LC: 3 });
   assert.equal(advisory.ready, true);
   assert.match(advisory.suggestion, /short/);
+});
+
+test('ASSUMED_MAX_RANK1_POINTS: lands in the top bracket (25,000 pt target)', () => {
+  assert.deepEqual(cargoTargetForRank1Points(ASSUMED_MAX_RANK1_POINTS), { pointTarget: 25000, approximate: false });
 });
 
 test('buildAdvisory: ready but suggestion is null when rank-1 points are unknown', () => {

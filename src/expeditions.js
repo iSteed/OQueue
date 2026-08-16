@@ -38,6 +38,15 @@
   ];
   const TOP_BRACKET = { minPoints: 100000000, pointTarget: 25000 };
 
+  // Temporary: the Fleet page advisor assumes the top bracket outright
+  // rather than depending on Dom.readRank1Points/store.getRank1Points (the
+  // scrape-and-cache path off the Highscore page's Points tab). That path
+  // still exists and still works if visited, but nothing currently forces
+  // the user to visit it first, so relying on it left the advisor silently
+  // suggestion-less until they did. Revisit if per-account accuracy below
+  // the top bracket ever matters enough to require that visit again.
+  const ASSUMED_MAX_RANK1_POINTS = TOP_BRACKET.minPoints;
+
   // rank1Points: number | null (unknown). Returns null if unknown, otherwise
   // { pointTarget, approximate }.
   function cargoTargetForRank1Points(rank1Points) {
@@ -147,5 +156,12 @@
     return { freeSlots, maxSlots: slots.max, ready: true, missing: [], suggestion };
   }
 
-  return { cargoTargetForRank1Points, hasExpeditionFleet, suggestLoadout, formatLoadout, buildAdvisory };
+  return {
+    cargoTargetForRank1Points,
+    hasExpeditionFleet,
+    suggestLoadout,
+    formatLoadout,
+    buildAdvisory,
+    ASSUMED_MAX_RANK1_POINTS,
+  };
 });

@@ -160,9 +160,13 @@
       if (!slots) {
         statusMessage = 'Could not read expedition slots on this page.';
       } else {
-        const rank1 = store.getRank1Points();
+        // Assumes the top bracket outright for now instead of depending on
+        // the Highscore-page rank-1 scrape (see Expeditions.
+        // ASSUMED_MAX_RANK1_POINTS) - nothing forces a visit to that page
+        // first, so relying on it left the advisor silently suggestion-less
+        // until the user happened to go cache it.
         const shipCounts = OQueue.Dom.readShipCounts(doc);
-        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null, shipCounts);
+        advisory = OQueue.Expeditions.buildAdvisory(slots, OQueue.Expeditions.ASSUMED_MAX_RANK1_POINTS, shipCounts);
         if (!advisory) statusMessage = `All expedition slots active (${slots.used}/${slots.max}) ✓`;
       }
       panel.render({ title, showQueue: false, expeditionAdvisory: advisory, statusMessage, toast });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.10.0
+// @version      0.10.1
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -618,6 +618,15 @@
   ];
   const TOP_BRACKET = { minPoints: 100000000, pointTarget: 25000 };
 
+  // Temporary: the Fleet page advisor assumes the top bracket outright
+  // rather than depending on Dom.readRank1Points/store.getRank1Points (the
+  // scrape-and-cache path off the Highscore page's Points tab). That path
+  // still exists and still works if visited, but nothing currently forces
+  // the user to visit it first, so relying on it left the advisor silently
+  // suggestion-less until they did. Revisit if per-account accuracy below
+  // the top bracket ever matters enough to require that visit again.
+  const ASSUMED_MAX_RANK1_POINTS = TOP_BRACKET.minPoints;
+
   // rank1Points: number | null (unknown). Returns null if unknown, otherwise
   // { pointTarget, approximate }.
   function cargoTargetForRank1Points(rank1Points) {
@@ -727,7 +736,14 @@
     return { freeSlots, maxSlots: slots.max, ready: true, missing: [], suggestion };
   }
 
-  return { cargoTargetForRank1Points, hasExpeditionFleet, suggestLoadout, formatLoadout, buildAdvisory };
+  return {
+    cargoTargetForRank1Points,
+    hasExpeditionFleet,
+    suggestLoadout,
+    formatLoadout,
+    buildAdvisory,
+    ASSUMED_MAX_RANK1_POINTS,
+  };
 });
 
 // ---- storage.js --------------------------------------------------
@@ -2704,9 +2720,13 @@
       if (!slots) {
         statusMessage = 'Could not read expedition slots on this page.';
       } else {
-        const rank1 = store.getRank1Points();
+        // Assumes the top bracket outright for now instead of depending on
+        // the Highscore-page rank-1 scrape (see Expeditions.
+        // ASSUMED_MAX_RANK1_POINTS) - nothing forces a visit to that page
+        // first, so relying on it left the advisor silently suggestion-less
+        // until the user happened to go cache it.
         const shipCounts = OQueue.Dom.readShipCounts(doc);
-        advisory = OQueue.Expeditions.buildAdvisory(slots, rank1 ? rank1.points : null, shipCounts);
+        advisory = OQueue.Expeditions.buildAdvisory(slots, OQueue.Expeditions.ASSUMED_MAX_RANK1_POINTS, shipCounts);
         if (!advisory) statusMessage = `All expedition slots active (${slots.used}/${slots.max}) ✓`;
       }
       panel.render({ title, showQueue: false, expeditionAdvisory: advisory, statusMessage, toast });
