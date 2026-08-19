@@ -64,6 +64,10 @@ test('resolveContext picks the lifeform scope on the lfbuildings page', () => {
   assert.equal(resolveContext('lfbuildings').scope, 'lifeform');
 });
 
+test('resolveContext picks the lifeformResearch scope on the lfresearch page', () => {
+  assert.equal(resolveContext('lfresearch').scope, 'lifeformResearch');
+});
+
 test('resolveContext picks the fleet scope on the fleet dispatch page', () => {
   assert.equal(resolveContext('fleetdispatch').scope, 'fleet');
 });

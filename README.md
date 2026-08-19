@@ -31,13 +31,12 @@ Next
 Crystal Mine 4
 Solar Plant 5
 
-[Done] [Edit] [Save as Template]
+[Edit] [Save as Template]
 ```
 
-- **Done** — manually advances to the next item (for when you'd rather click than wait on auto-detection).
 - **Edit** — opens a textarea with the current queue in shorthand text (see below); Save re-parses and replaces the queue.
 - **Save as Template** — stores the current queue under a name you pick, for reuse later (see Templates).
-- The panel auto-detects real building/tech levels from the page and checkmarks anything already reached — building things out of order doesn't break it.
+- The panel auto-detects real building/tech levels from the page and checkmarks anything already reached — building things out of order doesn't break it. This is also what advances the current/upcoming list, so there's no separate "mark done" action to click.
 - Only the last 5 completed items are shown (with a "+N earlier" note) so the current/upcoming items stay visible without scrolling.
 
 ### Two separate queues
@@ -48,6 +47,14 @@ Buildings are per-planet; research is account-wide. The panel automatically mana
 - The Research page → the one shared research queue, titled "Research Queue"
 
 Templates (below) work on the per-planet building queue, the account-wide research queue, and a planet's lifeform-building queue.
+
+### Advisory pages (not queues)
+
+Three pages show a read-only advisory instead of a build queue - no done/current/upcoming list, no Edit/Save buttons:
+
+- **Fleet Dispatch** — "🚀 Launch expedition" when a slot is free, with a loadout built from your actual hangar (1 Espionage Probe + 1 Pathfinder + however many Large/Small Cargo you own, sized toward the expedition point target - see BuildOrder.md section 10). Currently assumes the top point bracket outright rather than depending on a Highscore-page scrape.
+- **Lifeform Development** (`component=lfresearch`) — the full 18-slot assignment map from BuildOrder.md section 6, all at once: pick, species, category, and each tier's build order, non-native picks starred. Static reference, not tied to which slots you've actually filled yet.
+- **Highscore** (Points tab) — silently caches the rank-1 score; currently unused by the Fleet advisory (see above) but kept in case per-account accuracy below the top bracket matters again later.
 
 ## Import / Edit syntax
 

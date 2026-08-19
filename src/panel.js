@@ -17,6 +17,14 @@
  *     editText: string,        // current raw text for the Edit textarea
  *     templates: string[],     // known template names
  *     toast: string | null,    // transient message, e.g. "Metal Mine complete"
+ *
+ *     // Fleet/Highscore/Lifeform Development pages aren't queue pages -
+ *     // set showQueue: false and use one of these instead of the fields
+ *     // above:
+ *     showQueue: boolean,               // false skips the done/current/upcoming list entirely
+ *     expeditionAdvisory: object|null,  // Fleet page - see expeditions.js#buildAdvisory
+ *     lifeformSlotPlan: [{ heading } | { text }] | undefined, // Lifeform Development - see lifeformResearch.js#toPanelRows
+ *     statusMessage: string | null,     // fallback single-line status (Highscore, or Fleet with no free slots)
  *   }
  */
 (function (root, factory) {
@@ -218,9 +226,10 @@
 
       const body = el('div', { class: 'body' });
 
-      // Fleet/Highscore pages aren't queue pages - no done/current/upcoming
-      // list, no templates, no Edit/Save buttons. Just an advisory line (or
-      // status message) and whatever toast is pending.
+      // Fleet/Highscore/Lifeform Development pages aren't queue pages - no
+      // done/current/upcoming list, no templates, no Edit/Save buttons. Just
+      // an advisory line, a static reference list, or a status message, plus
+      // whatever toast is pending.
       if (vm.showQueue === false) {
         if (vm.expeditionAdvisory) {
           const a = vm.expeditionAdvisory;
@@ -238,6 +247,14 @@
             );
             body.appendChild(el('div', { class: 'upcoming', text: `Still need: ${a.missing.join(', ')}` }));
           }
+        } else if (vm.lifeformSlotPlan) {
+          vm.lifeformSlotPlan.forEach((row) => {
+            if (row.heading) {
+              body.appendChild(el('div', { class: 'upcoming-label', text: row.heading }));
+            } else {
+              body.appendChild(el('div', { class: 'upcoming', text: row.text }));
+            }
+          });
         } else if (vm.statusMessage) {
           body.appendChild(el('div', { class: 'upcoming', text: vm.statusMessage }));
         }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.10.1
+// @version      0.11.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -265,6 +265,90 @@
   }
 
   return { SPECIES, SPECIES_BY_INDEX, byCode, byId };
+});
+
+// ---- lifeformResearch.js -----------------------------------------
+/*
+ * The 18 lifeform research slots' assignment map - straight transcription of
+ * BuildOrder.md section 6, not live-verified DOM data. Read-only reference
+ * for the Lifeform Development page (component=lfresearch): OQueue doesn't
+ * track slot picks as a queue (they're one-time choices, not a sequential
+ * build order), so this just renders the guide's plan for all 18 slots at
+ * once so it's visible without leaving the page.
+ *
+ * `native: false` means the pick isn't the slot's own species' default
+ * option (BuildOrder.md's "Bold = non-native, may need artefacts").
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.LifeformResearch = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const TIERS = [
+    {
+      tier: 1,
+      order: [5, 4, 2, 6, 3, 1],
+      slots: [
+        { slot: 1, pick: 'Catalyser Technology', lf: 'Mecha', category: 'Deut +0.08%/lvl', native: false },
+        { slot: 2, pick: 'High-Performance Extractors', lf: 'Humans', category: 'All-res +0.06%/lvl', native: false },
+        { slot: 3, pick: 'High Energy Pump Systems', lf: "Rock'tal", category: 'Deut', native: true },
+        { slot: 4, pick: 'Telekinetic Tractor Beam', lf: 'Kaelesh', category: 'Expo fleet finds +0.2%/lvl', native: false },
+        { slot: 5, pick: 'Enhanced Sensor Technology', lf: 'Kaelesh', category: 'Expo res finds +0.2%/lvl', native: false },
+        { slot: 6, pick: 'Automated Transport Lines', lf: 'Mecha', category: 'All-res +0.06%/lvl', native: false },
+      ],
+    },
+    {
+      tier: 2,
+      order: [11, 8, 12, 10, 7, 9],
+      slots: [
+        { slot: 7, pick: 'Depth Sounding', lf: "Rock'tal", category: 'Metal +0.06%/lvl', native: true },
+        { slot: 8, pick: 'Enhanced Production Technologies', lf: 'Humans', category: 'All-res +0.06%/lvl', native: false },
+        { slot: 9, pick: 'Improved Stellarator', lf: "Rock'tal", category: 'Low value', native: true },
+        { slot: 10, pick: 'Hardened Diamond Drill Heads', lf: "Rock'tal", category: 'Metal +0.08%/lvl', native: true },
+        { slot: 11, pick: 'Sixth Sense', lf: 'Kaelesh', category: 'Expo res finds +0.2%/lvl', native: false },
+        { slot: 12, pick: 'Psychoharmoniser', lf: 'Kaelesh', category: 'All-res +0.06%/lvl', native: false },
+      ],
+    },
+    {
+      tier: 3,
+      order: [18, 13, 14, 15, 17, 16],
+      slots: [
+        { slot: 13, pick: 'Artificial Swarm Intelligence', lf: 'Mecha', category: 'All-res +0.06%/lvl', native: false },
+        { slot: 14, pick: 'Overclocking: Large Cargo', lf: 'Kaelesh', category: 'LC stats', native: false },
+        { slot: 15, pick: 'Gravitation Sensors', lf: 'Kaelesh', category: 'Expo DM finds +0.1%/lvl', native: false },
+        { slot: 16, pick: 'Obsidian Shield Reinforcement', lf: "Rock'tal", category: 'Defence +0.5%/lvl', native: true },
+        { slot: 17, pick: 'Robot Assistants', lf: 'Humans', category: 'Research time −0.2%/lvl (cap 99%)', native: false },
+        { slot: 18, pick: 'Kaelesh Discoverer Enhancement', lf: 'Kaelesh', category: 'Discoverer class bonus +0.2%/lvl', native: false },
+      ],
+    },
+  ];
+
+  // Flat 1-18 list, for callers that don't care about tier grouping.
+  const ALL_SLOTS = TIERS.reduce((acc, t) => acc.concat(t.slots), []);
+
+  // Renders the whole map into panel rows: a tier heading (with its build
+  // order) followed by one line per slot, non-native picks starred to match
+  // the doc's "Bold = non-native, may need artefacts" convention (plain text
+  // in the panel has no bold, so a star stands in for it).
+  //   [{ heading: string } | { text: string }, ...]
+  function toPanelRows() {
+    const rows = [];
+    TIERS.forEach((t) => {
+      rows.push({ heading: `Tier ${t.tier} (order: ${t.order.join('→')})` });
+      t.slots.forEach((s) => {
+        const star = s.native ? '' : '★';
+        rows.push({ text: `${s.slot}. ${star}${s.pick} (${s.lf}) — ${s.category}` });
+      });
+    });
+    return rows;
+  }
+
+  return { TIERS, ALL_SLOTS, toPanelRows };
 });
 
 // ---- ships.js ----------------------------------------------------
@@ -1645,6 +1729,14 @@
  *     editText: string,        // current raw text for the Edit textarea
  *     templates: string[],     // known template names
  *     toast: string | null,    // transient message, e.g. "Metal Mine complete"
+ *
+ *     // Fleet/Highscore/Lifeform Development pages aren't queue pages -
+ *     // set showQueue: false and use one of these instead of the fields
+ *     // above:
+ *     showQueue: boolean,               // false skips the done/current/upcoming list entirely
+ *     expeditionAdvisory: object|null,  // Fleet page - see expeditions.js#buildAdvisory
+ *     lifeformSlotPlan: [{ heading } | { text }] | undefined, // Lifeform Development - see lifeformResearch.js#toPanelRows
+ *     statusMessage: string | null,     // fallback single-line status (Highscore, or Fleet with no free slots)
  *   }
  */
 (function (root, factory) {
@@ -1846,9 +1938,10 @@
 
       const body = el('div', { class: 'body' });
 
-      // Fleet/Highscore pages aren't queue pages - no done/current/upcoming
-      // list, no templates, no Edit/Save buttons. Just an advisory line (or
-      // status message) and whatever toast is pending.
+      // Fleet/Highscore/Lifeform Development pages aren't queue pages - no
+      // done/current/upcoming list, no templates, no Edit/Save buttons. Just
+      // an advisory line, a static reference list, or a status message, plus
+      // whatever toast is pending.
       if (vm.showQueue === false) {
         if (vm.expeditionAdvisory) {
           const a = vm.expeditionAdvisory;
@@ -1866,6 +1959,14 @@
             );
             body.appendChild(el('div', { class: 'upcoming', text: `Still need: ${a.missing.join(', ')}` }));
           }
+        } else if (vm.lifeformSlotPlan) {
+          vm.lifeformSlotPlan.forEach((row) => {
+            if (row.heading) {
+              body.appendChild(el('div', { class: 'upcoming-label', text: row.heading }));
+            } else {
+              body.appendChild(el('div', { class: 'upcoming', text: row.text }));
+            }
+          });
         } else if (vm.statusMessage) {
           body.appendChild(el('div', { class: 'upcoming', text: vm.statusMessage }));
         }
@@ -2569,6 +2670,7 @@
       root.OQueue || {
         Buildings: require('./buildings'),
         LifeformBuildings: require('./lifeformBuildings'),
+        LifeformResearch: require('./lifeformResearch'),
         Storage: require('./storage'),
         Import: require('./import'),
         Rules: require('./rules'),
@@ -2651,6 +2753,9 @@
     if (pageComponent === 'lfbuildings') {
       return { scope: 'lifeform' };
     }
+    if (pageComponent === 'lfresearch') {
+      return { scope: 'lifeformResearch' };
+    }
     if (pageComponent === 'fleetdispatch') {
       return { scope: 'fleet' };
     }
@@ -2670,21 +2775,26 @@
     const context = resolveContext(OQueue.Dom.currentPage(doc.location));
     const isResearch = context.scope === 'research';
     const isLifeform = context.scope === 'lifeform';
+    const isLifeformResearch = context.scope === 'lifeformResearch';
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
     const isPlanetQueue = context.scope === 'planet';
     const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
-      isResearch || isFleet || isHighscore ? null : OQueue.Dom.activePlanetId(doc) || 'default';
+      isResearch || isLifeformResearch || isFleet || isHighscore
+        ? null
+        : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
       ? 'Research Queue'
       : isLifeform
         ? `Lifeform Queue - ${planetId}`
-        : isFleet
-          ? 'Fleet - Expeditions'
-          : isHighscore
-            ? 'Highscore'
-            : `Colony Queue - ${planetId}`;
+        : isLifeformResearch
+          ? 'Lifeform Research Slots'
+          : isFleet
+            ? 'Fleet - Expeditions'
+            : isHighscore
+              ? 'Highscore'
+              : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -2746,9 +2856,21 @@
       toast = null;
     }
 
+    // Lifeform Development (component=lfresearch) isn't a queue either - the
+    // 18 slots are one-time picks, not a sequential build order, so there's
+    // nothing to track/complete. Just renders BuildOrder.md section 6's
+    // assignment map as a static reference so it's visible without leaving
+    // the page. Not tied to live DOM state at all (no selectors confirmed
+    // for this page yet - see lifeformResearch.js).
+    function refreshLifeformResearch() {
+      panel.render({ title, showQueue: false, lifeformSlotPlan: OQueue.LifeformResearch.toPanelRows(), toast });
+      toast = null;
+    }
+
     function refresh() {
       if (isFleet) return refreshFleet();
       if (isHighscore) return refreshHighscore();
+      if (isLifeformResearch) return refreshLifeformResearch();
 
       const state = getState();
       const domLevels = readLevels();

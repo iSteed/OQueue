@@ -9,6 +9,7 @@
       root.OQueue || {
         Buildings: require('./buildings'),
         LifeformBuildings: require('./lifeformBuildings'),
+        LifeformResearch: require('./lifeformResearch'),
         Storage: require('./storage'),
         Import: require('./import'),
         Rules: require('./rules'),
@@ -91,6 +92,9 @@
     if (pageComponent === 'lfbuildings') {
       return { scope: 'lifeform' };
     }
+    if (pageComponent === 'lfresearch') {
+      return { scope: 'lifeformResearch' };
+    }
     if (pageComponent === 'fleetdispatch') {
       return { scope: 'fleet' };
     }
@@ -110,21 +114,26 @@
     const context = resolveContext(OQueue.Dom.currentPage(doc.location));
     const isResearch = context.scope === 'research';
     const isLifeform = context.scope === 'lifeform';
+    const isLifeformResearch = context.scope === 'lifeformResearch';
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
     const isPlanetQueue = context.scope === 'planet';
     const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
-      isResearch || isFleet || isHighscore ? null : OQueue.Dom.activePlanetId(doc) || 'default';
+      isResearch || isLifeformResearch || isFleet || isHighscore
+        ? null
+        : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
       ? 'Research Queue'
       : isLifeform
         ? `Lifeform Queue - ${planetId}`
-        : isFleet
-          ? 'Fleet - Expeditions'
-          : isHighscore
-            ? 'Highscore'
-            : `Colony Queue - ${planetId}`;
+        : isLifeformResearch
+          ? 'Lifeform Research Slots'
+          : isFleet
+            ? 'Fleet - Expeditions'
+            : isHighscore
+              ? 'Highscore'
+              : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -186,9 +195,21 @@
       toast = null;
     }
 
+    // Lifeform Development (component=lfresearch) isn't a queue either - the
+    // 18 slots are one-time picks, not a sequential build order, so there's
+    // nothing to track/complete. Just renders BuildOrder.md section 6's
+    // assignment map as a static reference so it's visible without leaving
+    // the page. Not tied to live DOM state at all (no selectors confirmed
+    // for this page yet - see lifeformResearch.js).
+    function refreshLifeformResearch() {
+      panel.render({ title, showQueue: false, lifeformSlotPlan: OQueue.LifeformResearch.toPanelRows(), toast });
+      toast = null;
+    }
+
     function refresh() {
       if (isFleet) return refreshFleet();
       if (isHighscore) return refreshHighscore();
+      if (isLifeformResearch) return refreshLifeformResearch();
 
       const state = getState();
       const domLevels = readLevels();
