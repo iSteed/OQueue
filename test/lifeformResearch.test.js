@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { TIERS, ALL_SLOTS, toPanelRows } = require('../src/lifeformResearch');
+const { TIERS, ALL_SLOTS, LEGEND, toPanelRows } = require('../src/lifeformResearch');
 
 test('TIERS covers all 18 slots exactly once, in order, across the 3 tiers', () => {
   assert.equal(TIERS.length, 3);
@@ -25,17 +25,19 @@ test('every slot has a non-empty pick, lf, and category', () => {
   });
 });
 
-test('toPanelRows: one heading per tier followed by its 6 slot rows, in slot order', () => {
+test('toPanelRows: a legend line, then one heading per tier, each followed by 2 lines per slot', () => {
   const rows = toPanelRows();
-  // 3 headings + 18 slot rows = 21.
-  assert.equal(rows.length, 21);
+  // 1 legend + 3 headings + (18 slots x 2 lines) = 40.
+  assert.equal(rows.length, 40);
 
-  assert.equal(rows[0].heading, 'Tier 1 (order: 5→4→2→6→3→1)');
-  assert.equal(rows[7].heading, 'Tier 2 (order: 11→8→12→10→7→9)');
-  assert.equal(rows[14].heading, 'Tier 3 (order: 18→13→14→15→17→16)');
+  assert.equal(rows[0].text, LEGEND);
+  assert.equal(rows[1].heading, 'Tier 1 (order: 5→4→2→6→3→1)');
+  assert.equal(rows[14].heading, 'Tier 2 (order: 11→8→12→10→7→9)');
+  assert.equal(rows[27].heading, 'Tier 3 (order: 18→13→14→15→17→16)');
 
-  // Slot 1's row (first slot row after the Tier 1 heading).
-  assert.match(rows[1].text, /^1\. .*Catalyser Technology \(Mecha\) — Deut \+0\.08%\/lvl$/);
+  // Slot 1's two lines (first slot rows after the Tier 1 heading).
+  assert.match(rows[2].text, /^1\. .*Catalyser Technology$/);
+  assert.equal(rows[3].text, '↳ Mecha — Deut +0.08%/lvl');
 });
 
 test('toPanelRows: non-native picks are starred, native picks are not', () => {

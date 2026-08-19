@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.11.0
+// @version      0.11.1
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -331,24 +331,34 @@
   // Flat 1-18 list, for callers that don't care about tier grouping.
   const ALL_SLOTS = TIERS.reduce((acc, t) => acc.concat(t.slots), []);
 
-  // Renders the whole map into panel rows: a tier heading (with its build
-  // order) followed by one line per slot, non-native picks starred to match
-  // the doc's "Bold = non-native, may need artefacts" convention (plain text
-  // in the panel has no bold, so a star stands in for it).
+  const LEGEND =
+    '★ non-native: accept if it rolls free; spend artefacts only if it never does (T1 200 / T2 400 / T3 600 - BuildOrder.md §6)';
+
+  // Renders the whole map into panel rows: a legend line, then per tier a
+  // heading (with its build order) followed by two lines per slot - the
+  // pick's name, then an indented "species — category" line - rather than
+  // one long run-on line. The panel is a fixed 240px wide, and cramming
+  // slot + star + pick + species + category onto a single line wrapped
+  // wherever the browser felt like it, mid-datum, which read as a jumble;
+  // splitting at the name/details boundary wraps (if it wraps at all) at a
+  // sane point instead. Non-native picks starred to match the doc's "Bold =
+  // non-native, may need artefacts" convention (plain text in the panel has
+  // no bold, so a star stands in for it).
   //   [{ heading: string } | { text: string }, ...]
   function toPanelRows() {
-    const rows = [];
+    const rows = [{ text: LEGEND }];
     TIERS.forEach((t) => {
       rows.push({ heading: `Tier ${t.tier} (order: ${t.order.join('→')})` });
       t.slots.forEach((s) => {
         const star = s.native ? '' : '★';
-        rows.push({ text: `${s.slot}. ${star}${s.pick} (${s.lf}) — ${s.category}` });
+        rows.push({ text: `${s.slot}. ${star}${s.pick}` });
+        rows.push({ text: `↳ ${s.lf} — ${s.category}` });
       });
     });
     return rows;
   }
 
-  return { TIERS, ALL_SLOTS, toPanelRows };
+  return { TIERS, ALL_SLOTS, LEGEND, toPanelRows };
 });
 
 // ---- ships.js ----------------------------------------------------
