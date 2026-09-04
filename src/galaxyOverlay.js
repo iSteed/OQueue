@@ -7,10 +7,20 @@
  * OGame's page styles can't bleed into the editor (like panel.js).
  *
  * See dom.js's Galaxy-page comment block for the confirmed markup. The
- * marker is appended into the row's existing `.cellAction` cell (alongside
- * the espionage/message/buddy/missile icons), falling back to appending
- * directly to the row if that cell is ever missing - a markup change
- * degrades to "marker floats at the row's end" rather than throwing.
+ * marker is anchored to the row's existing `.cellAction` cell (alongside
+ * the espionage/message/buddy/missile icons), falling back to the row
+ * itself if that cell is ever missing - a markup change degrades to
+ * "marker floats at the row's end" rather than throwing.
+ *
+ * REPORTED (2026-09, Zen/Firefox): `.cellAction` is a fixed-width
+ * `nowrap` flex row sized to fit exactly its 5 native icons - appending
+ * the marker as a normal 6th flex child forced the existing icons to
+ * flex-shrink and squish together (not reproduced in the earlier Chrome
+ * check, apparently width-dependent). Fixed by taking the marker out of
+ * flex flow entirely (`position: absolute`, anchored just outside the
+ * cell's right edge) instead of trying to widen the cell - it never
+ * contributes to that row's flex-basis, so it can't squeeze anything
+ * regardless of viewport/zoom.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -35,7 +45,13 @@
     const style = doc.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      .${CELL_CLASS} { display: inline-flex; vertical-align: middle; }
+      .${CELL_CLASS} {
+        position: absolute;
+        right: -20px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: inline-flex;
+      }
       .${MARKER_CLASS} {
         appearance: none;
         -webkit-appearance: none;
@@ -228,10 +244,17 @@
   function markerFor(row, doc) {
     let wrapper = row.querySelector(`.${CELL_CLASS}`);
     if (!wrapper) {
+      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
+      const host = actionCell || row;
+      // The wrapper is positioned absolute (see ensureStyle) so it never
+      // contributes to the host's own flex layout - needs the host itself
+      // to be a positioning context, which it isn't by default.
+      const view = doc.defaultView;
+      const hostPosition = view ? view.getComputedStyle(host).position : host.style.position;
+      if (!hostPosition || hostPosition === 'static') host.style.position = 'relative';
       wrapper = doc.createElement('div');
       wrapper.className = CELL_CLASS;
-      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
-      (actionCell || row).appendChild(wrapper);
+      host.appendChild(wrapper);
     }
     let btn = wrapper.querySelector(`.${MARKER_CLASS}`);
     if (!btn) {
