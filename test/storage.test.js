@@ -141,3 +141,23 @@ test('templates fall back to the main backend when no separate templates backend
   store.saveTemplate('New Colony', { mode: 'list', list: [] });
   assert.ok(store.getTemplates()['New Colony']);
 });
+
+test('getPlanetNote returns null when unset', () => {
+  const store = freshStore();
+  assert.equal(store.getPlanetNote('3:145:7'), null);
+});
+
+test('setPlanetNote / getPlanetNote round-trips, keyed independently per coordinate', () => {
+  const store = freshStore();
+  store.setPlanetNote('3:145:7', { preset: 'farm', emoji: '🌾', text: 'weak inactive', updatedAt: 1 });
+  store.setPlanetNote('3:145:8', { preset: 'defended', emoji: '⚔️', text: '', updatedAt: 2 });
+  assert.equal(store.getPlanetNote('3:145:7').preset, 'farm');
+  assert.equal(store.getPlanetNote('3:145:8').preset, 'defended');
+});
+
+test('deletePlanetNote clears a saved note', () => {
+  const store = freshStore();
+  store.setPlanetNote('3:145:7', { preset: 'watch', emoji: '⚠️', text: '', updatedAt: 1 });
+  store.deletePlanetNote('3:145:7');
+  assert.equal(store.getPlanetNote('3:145:7'), null);
+});

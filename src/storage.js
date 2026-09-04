@@ -19,6 +19,11 @@
  *                                  expedition cargo advisory (see
  *                                  expeditions.js) has a number to work with
  *                                  even on pages that aren't the highscore page.
+ *   oqueue:note:<g>:<s>:<p>      -> { preset, emoji, text, updatedAt } - a
+ *                                  galaxy-view planet tag (see planetNotes.js),
+ *                                  keyed by galaxy:system:position rather than
+ *                                  planet id since the whole point is tagging
+ *                                  planets you've scanned, not colonized.
  *
  * Templates use a separate backend from everything else above. Every other
  * key is legitimately per-server (planet/tech levels don't mean anything
@@ -47,6 +52,7 @@
   const ACCOUNT_KEY = 'oqueue:account';
   const TEMPLATES_KEY = 'oqueue:templates';
   const RANK1_POINTS_KEY = 'oqueue:rank1points';
+  const NOTE_PREFIX = 'oqueue:note:';
 
   function defaultQueueState() {
     return { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] };
@@ -178,6 +184,19 @@
       return templates;
     }
 
+    // coordKey: "galaxy:system:position" (see planetNotes.js#coordKey).
+    function getPlanetNote(coordKey) {
+      return readJSON(be, NOTE_PREFIX + coordKey, null);
+    }
+
+    function setPlanetNote(coordKey, note) {
+      writeJSON(be, NOTE_PREFIX + coordKey, note);
+    }
+
+    function deletePlanetNote(coordKey) {
+      be.removeItem(NOTE_PREFIX + coordKey);
+    }
+
     function getRank1Points() {
       return readJSON(be, RANK1_POINTS_KEY, null);
     }
@@ -204,6 +223,9 @@
       deleteTemplate,
       getRank1Points,
       setRank1Points,
+      getPlanetNote,
+      setPlanetNote,
+      deletePlanetNote,
     };
   }
 

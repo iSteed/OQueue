@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.11.1
-// @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, and a rule-based planner.
+// @version      0.12.0
+// @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -862,6 +862,11 @@
  *                                  expedition cargo advisory (see
  *                                  expeditions.js) has a number to work with
  *                                  even on pages that aren't the highscore page.
+ *   oqueue:note:<g>:<s>:<p>      -> { preset, emoji, text, updatedAt } - a
+ *                                  galaxy-view planet tag (see planetNotes.js),
+ *                                  keyed by galaxy:system:position rather than
+ *                                  planet id since the whole point is tagging
+ *                                  planets you've scanned, not colonized.
  *
  * Templates use a separate backend from everything else above. Every other
  * key is legitimately per-server (planet/tech levels don't mean anything
@@ -890,6 +895,7 @@
   const ACCOUNT_KEY = 'oqueue:account';
   const TEMPLATES_KEY = 'oqueue:templates';
   const RANK1_POINTS_KEY = 'oqueue:rank1points';
+  const NOTE_PREFIX = 'oqueue:note:';
 
   function defaultQueueState() {
     return { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] };
@@ -1021,6 +1027,19 @@
       return templates;
     }
 
+    // coordKey: "galaxy:system:position" (see planetNotes.js#coordKey).
+    function getPlanetNote(coordKey) {
+      return readJSON(be, NOTE_PREFIX + coordKey, null);
+    }
+
+    function setPlanetNote(coordKey, note) {
+      writeJSON(be, NOTE_PREFIX + coordKey, note);
+    }
+
+    function deletePlanetNote(coordKey) {
+      be.removeItem(NOTE_PREFIX + coordKey);
+    }
+
     function getRank1Points() {
       return readJSON(be, RANK1_POINTS_KEY, null);
     }
@@ -1047,6 +1066,9 @@
       deleteTemplate,
       getRank1Points,
       setRank1Points,
+      getPlanetNote,
+      setPlanetNote,
+      deletePlanetNote,
     };
   }
 
@@ -2114,6 +2136,19 @@
  * reuse the same table markup with a different score, so callers must check
  * the URL's `category` param before trusting the result (see currentPage's
  * sibling currentHighscoreCategory() below).
+ *
+ * UNCONFIRMED (not yet checked against a live session - galaxy view wasn't
+ * covered by the 2026-08 sessions above) on the Galaxy page
+ * (component=galaxy): assumed `#galaxytable` holding one `<tr id="row<N>">`
+ * per position (N = 1-15, empty slots included) and `#galaxy_input`/
+ * `#system_input` reflecting the currently-displayed coordinates - these are
+ * long-standing OGame ids, but the galaxy table is repopulated by an AJAX
+ * call when you jump systems without a full page navigation, so
+ * readGalaxyRows()/currentGalaxyCoords() below must be re-read on every poll
+ * tick rather than cached. galaxyOverlay.js deliberately appends a fresh
+ * `<td>` to each row for its marker instead of targeting any cell inside the
+ * row, so it doesn't depend on unconfirmed inner markup - verify the row/id
+ * assumption on a live galaxy page and correct this block if wrong.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2144,6 +2179,9 @@
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
     shipAmount: '.amount',
+    galaxyTable: '#galaxytable',
+    galaxyInput: '#galaxy_input',
+    systemInput: '#system_input',
   };
 
   function currentPlanetId(loc) {
@@ -2293,6 +2331,40 @@
     return counts;
   }
 
+  // doc: Document to read from (the Galaxy page). Returns the currently
+  // displayed { galaxy, system } as numbers, or null if the input fields
+  // aren't present (wrong page / not loaded yet). Read fresh each time
+  // rather than cached - see UNCONFIRMED note above, the table is
+  // AJAX-repopulated on system jumps without a URL change.
+  function currentGalaxyCoords(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const galaxyEl = doc.querySelector(SELECTORS.galaxyInput);
+    const systemEl = doc.querySelector(SELECTORS.systemInput);
+    if (!galaxyEl || !systemEl) return null;
+    const galaxy = parseInt(galaxyEl.value, 10);
+    const system = parseInt(systemEl.value, 10);
+    if (isNaN(galaxy) || isNaN(system)) return null;
+    return { galaxy, system };
+  }
+
+  // doc: Document to read from (the Galaxy page). Returns
+  // [{ position, row }] for every position row found (1-15, including empty
+  // slots - callers decide what, if anything, to render on each).
+  function readGalaxyRows(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return [];
+    const table = doc.querySelector(SELECTORS.galaxyTable);
+    if (!table) return [];
+    const rows = [];
+    table.querySelectorAll('tr[id]').forEach((row) => {
+      const match = /^row(\d+)$/.exec(row.id);
+      if (!match) return;
+      rows.push({ position: parseInt(match[1], 10), row });
+    });
+    return rows;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -2337,6 +2409,8 @@
     readLifeformBuildingLevels,
     activeLifeformSpecies,
     readPlanetList,
+    currentGalaxyCoords,
+    readGalaxyRows,
     isBuildingActive,
     watchConstructionBox,
     highlightBuilding,
@@ -2668,6 +2742,317 @@
   return { render, remove };
 });
 
+// ---- planetNotes.js ----------------------------------------------
+/*
+ * Galaxy-view planet notes: the small "leave alone / not worth it / farm
+ * this" tags a player leaves on planets while scanning the galaxy view, so
+ * the verdict is visible at a glance next time without re-scanning.
+ *
+ * Pure logic only - no DOM/storage access (see galaxyOverlay.js for the
+ * DOM injection, storage.js for the persistence, both of which use this
+ * module for the shared vocabulary/shape).
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.PlanetNotes = factory();
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // Order is display order in the popup's preset row.
+  const PRESETS = [
+    { id: 'defended', emoji: '⚔️', label: 'Defended - leave alone' },
+    { id: 'weak', emoji: '💤', label: 'Weak inactive - not worth it' },
+    { id: 'farm', emoji: '🌾', label: 'Juicy farm target' },
+    { id: 'watch', emoji: '⚠️', label: 'Watch' },
+  ];
+
+  function presetById(id) {
+    return PRESETS.find((p) => p.id === id) || null;
+  }
+
+  // galaxy/system/position are the three numbers that pin a planet slot in
+  // the galaxy view (position 1-15). Stringified and joined rather than kept
+  // as a nested object so it drops straight into a flat storage key.
+  function coordKey(galaxy, system, position) {
+    return `${galaxy}:${system}:${position}`;
+  }
+
+  // Builds the note object that gets persisted, from what the popup form
+  // collected. presetId may be null (free-text-only note). A custom emoji
+  // (typed instead of picked from a preset) wins over the preset's default.
+  function buildNote({ presetId, emoji, text }) {
+    const preset = presetById(presetId);
+    const resolvedEmoji = (emoji || (preset && preset.emoji) || '').trim();
+    const resolvedText = (text || '').trim();
+    if (!resolvedEmoji && !resolvedText) return null;
+    return {
+      preset: preset ? preset.id : null,
+      emoji: resolvedEmoji,
+      text: resolvedText,
+      updatedAt: Date.now(),
+    };
+  }
+
+  // What the galaxy-row marker shows when a note exists: the emoji (or a
+  // generic tag glyph if the note is text-only) plus a tooltip combining the
+  // preset label and free text.
+  function markerFor(note) {
+    if (!note) return { glyph: '🏷', title: 'Tag this planet' };
+    const preset = presetById(note.preset);
+    const glyph = note.emoji || '🏷';
+    const parts = [];
+    if (preset) parts.push(preset.label);
+    if (note.text) parts.push(note.text);
+    return { glyph, title: parts.join(' - ') || 'Tagged planet' };
+  }
+
+  return { PRESETS, presetById, coordKey, buildNote, markerFor };
+});
+
+// ---- galaxyOverlay.js --------------------------------------------
+/*
+ * Galaxy-view planet tagging: a small clickable marker appended to each
+ * planet row on the Galaxy page (component=galaxy) showing whatever note is
+ * saved for that coordinate (see planetNotes.js), and a popup for setting
+ * one. Writes directly into the game's own DOM for the marker (like
+ * roiOverlay.js) but uses a single shared Shadow DOM host for the popup so
+ * OGame's page styles can't bleed into the editor (like panel.js).
+ *
+ * UNCONFIRMED - see dom.js's Galaxy-page comment block. render() is written
+ * defensively (appends a fresh `<td>` rather than targeting inner markup)
+ * so a markup mismatch degrades to "no marker column" rather than throwing.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory(
+      typeof require !== 'undefined' ? require('./planetNotes') : root.OQueue.PlanetNotes,
+      typeof require !== 'undefined' ? require('./dom') : root.OQueue.Dom
+    );
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.GalaxyOverlay = factory(root.OQueue.PlanetNotes, root.OQueue.Dom);
+  }
+})(typeof self !== 'undefined' ? self : this, function (PlanetNotes, Dom) {
+  'use strict';
+
+  const MARKER_CLASS = 'oqueue-note-marker';
+  const CELL_CLASS = 'oqueue-note-cell';
+  const STYLE_ID = 'oqueue-galaxy-style';
+  const POPUP_HOST_ID = 'oqueue-note-popup-host';
+
+  function ensureStyle(doc) {
+    if (doc.getElementById(STYLE_ID)) return;
+    const style = doc.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      .${CELL_CLASS} { text-align: center; }
+      .${MARKER_CLASS} {
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        opacity: 0.55;
+        background: none;
+        border: none;
+        padding: 2px;
+      }
+      .${MARKER_CLASS}.oqueue-tagged { opacity: 1; }
+    `;
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+
+  function el(doc, tag, attrs) {
+    const node = doc.createElement(tag);
+    if (attrs) {
+      for (const k in attrs) {
+        if (k === 'text') node.textContent = attrs[k];
+        else node.setAttribute(k, attrs[k]);
+      }
+    }
+    return node;
+  }
+
+  // One popup host, created lazily and reused across every marker click
+  // (repositioned/repopulated each time) rather than one per row.
+  function ensurePopup(doc) {
+    let host = doc.getElementById(POPUP_HOST_ID);
+    if (host) return host;
+    host = doc.createElement('div');
+    host.id = POPUP_HOST_ID;
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = doc.createElement('style');
+    style.textContent = `
+      .popup {
+        position: fixed;
+        width: 220px;
+        background: #1b1f24;
+        color: #e6e6e6;
+        font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        border: 1px solid #3a4048;
+        border-radius: 6px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        z-index: 1000000;
+        padding: 8px;
+      }
+      .hidden { display: none; }
+      .presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+      .preset {
+        flex: 1 1 auto;
+        background: #323a42;
+        color: #e6e6e6;
+        border: 1px solid #454e57;
+        border-radius: 4px;
+        padding: 4px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .preset.selected { border-color: #ffd479; background: #3d4650; }
+      input[type=text] {
+        width: 100%;
+        box-sizing: border-box;
+        background: #12151a;
+        color: #e6e6e6;
+        border: 1px solid #3a4048;
+        border-radius: 4px;
+        padding: 4px;
+        margin-bottom: 6px;
+        font: 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .actions { display: flex; gap: 6px; }
+      button.action {
+        flex: 1 1 auto;
+        background: #323a42;
+        color: #e6e6e6;
+        border: 1px solid #454e57;
+        border-radius: 4px;
+        padding: 4px 6px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      button.action:hover { background: #3d4650; }
+    `;
+    shadow.appendChild(style);
+    const popup = doc.createElement('div');
+    popup.className = 'popup hidden';
+    shadow.appendChild(popup);
+    doc.body.appendChild(host);
+    host._popup = popup;
+    host._shadow = shadow;
+    return host;
+  }
+
+  function closePopup(doc) {
+    const host = doc.getElementById(POPUP_HOST_ID);
+    if (host && host._popup) host._popup.classList.add('hidden');
+  }
+
+  function openPopup(doc, anchorEl, coordKey, note, handlers) {
+    const host = ensurePopup(doc);
+    const popup = host._popup;
+    popup.innerHTML = '';
+
+    let selectedPreset = note ? note.preset : null;
+
+    const presetsRow = el(doc, 'div', { class: 'presets' });
+    PlanetNotes.PRESETS.forEach((preset) => {
+      const btn = el(doc, 'button', { class: 'preset', title: preset.label, text: preset.emoji });
+      if (preset.id === selectedPreset) btn.classList.add('selected');
+      btn.addEventListener('click', () => {
+        selectedPreset = selectedPreset === preset.id ? null : preset.id;
+        Array.from(presetsRow.children).forEach((c) => c.classList.remove('selected'));
+        if (selectedPreset) btn.classList.add('selected');
+      });
+      presetsRow.appendChild(btn);
+    });
+    popup.appendChild(presetsRow);
+
+    const textInput = el(doc, 'input', { type: 'text', placeholder: 'Note (optional)' });
+    textInput.value = note ? note.text || '' : '';
+    popup.appendChild(textInput);
+
+    const actions = el(doc, 'div', { class: 'actions' });
+    const saveBtn = el(doc, 'button', { class: 'action', text: 'Save' });
+    const clearBtn = el(doc, 'button', { class: 'action', text: 'Clear' });
+    const cancelBtn = el(doc, 'button', { class: 'action', text: 'Cancel' });
+    saveBtn.addEventListener('click', () => {
+      const built = PlanetNotes.buildNote({ presetId: selectedPreset, text: textInput.value });
+      if (built) handlers.onSave(coordKey, built);
+      else handlers.onClear(coordKey);
+      popup.classList.add('hidden');
+    });
+    clearBtn.addEventListener('click', () => {
+      handlers.onClear(coordKey);
+      popup.classList.add('hidden');
+    });
+    cancelBtn.addEventListener('click', () => popup.classList.add('hidden'));
+    actions.appendChild(saveBtn);
+    actions.appendChild(clearBtn);
+    actions.appendChild(cancelBtn);
+    popup.appendChild(actions);
+
+    const rect = anchorEl.getBoundingClientRect();
+    popup.style.left = `${Math.max(4, rect.left)}px`;
+    popup.style.top = `${rect.bottom + 4}px`;
+    popup.classList.remove('hidden');
+  }
+
+  // doc: live document. options:
+  //   getNote(coordKey) -> note|null    - looks up a saved note
+  //   onSave(coordKey, note)            - persist a note (preset/emoji/text)
+  //   onClear(coordKey)                 - delete a note
+  function render(doc, options) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return;
+    const coords = Dom.currentGalaxyCoords(doc);
+    if (!coords) return;
+    ensureStyle(doc);
+
+    Dom.readGalaxyRows(doc).forEach(({ position, row }) => {
+      const coordKey = PlanetNotes.coordKey(coords.galaxy, coords.system, position);
+      const note = options.getNote(coordKey);
+      const marker = markerFor(row, doc);
+      const info = PlanetNotes.markerFor(note);
+      marker.textContent = info.glyph;
+      marker.title = `OQueue: ${info.title}`;
+      marker.classList.toggle('oqueue-tagged', !!note);
+      marker.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPopup(doc, marker, coordKey, note, options);
+      };
+    });
+  }
+
+  function markerFor(row, doc) {
+    let cell = row.querySelector(`.${CELL_CLASS}`);
+    if (!cell) {
+      cell = doc.createElement('td');
+      cell.className = CELL_CLASS;
+      row.appendChild(cell);
+    }
+    let btn = cell.querySelector(`.${MARKER_CLASS}`);
+    if (!btn) {
+      btn = doc.createElement('button');
+      btn.className = MARKER_CLASS;
+      btn.type = 'button';
+      cell.appendChild(btn);
+    }
+    return btn;
+  }
+
+  function remove(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return;
+    doc.querySelectorAll(`.${CELL_CLASS}`).forEach((el) => el.remove());
+    closePopup(doc);
+  }
+
+  return { render, remove };
+});
+
 // ---- main.js -----------------------------------------------------
 /*
  * Orchestrator: wires storage, rule/list resolution, the panel, DOM readers,
@@ -2690,6 +3075,8 @@
         Cleanup: require('./cleanup'),
         Roi: require('./roi'),
         RoiOverlay: require('./roiOverlay'),
+        PlanetNotes: require('./planetNotes'),
+        GalaxyOverlay: require('./galaxyOverlay'),
       }
     );
   } else {
@@ -2772,6 +3159,9 @@
     if (pageComponent === 'highscore') {
       return { scope: 'highscore' };
     }
+    if (pageComponent === 'galaxy') {
+      return { scope: 'galaxy' };
+    }
     return { scope: 'planet' };
   }
 
@@ -2788,10 +3178,11 @@
     const isLifeformResearch = context.scope === 'lifeformResearch';
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
+    const isGalaxy = context.scope === 'galaxy';
     const isPlanetQueue = context.scope === 'planet';
     const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
-      isResearch || isLifeformResearch || isFleet || isHighscore
+      isResearch || isLifeformResearch || isFleet || isHighscore || isGalaxy
         ? null
         : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
@@ -2804,7 +3195,9 @@
             ? 'Fleet - Expeditions'
             : isHighscore
               ? 'Highscore'
-              : `Colony Queue - ${planetId}`;
+              : isGalaxy
+                ? 'Galaxy Scan'
+                : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -2877,10 +3270,32 @@
       toast = null;
     }
 
+    // Galaxy page (component=galaxy) isn't a queue either - see
+    // galaxyOverlay.js for the actual feature (a clickable tag marker on
+    // each planet row). The panel here just shows a one-line reminder;
+    // getNote/onSave/onClear are thin wrappers over the store so the DOM
+    // layer never touches storage directly (same separation as
+    // getState/setState above).
+    function refreshGalaxy() {
+      OQueue.GalaxyOverlay.render(doc, {
+        getNote: (coordKey) => store.getPlanetNote(coordKey),
+        onSave: (coordKey, note) => store.setPlanetNote(coordKey, note),
+        onClear: (coordKey) => store.deletePlanetNote(coordKey),
+      });
+      panel.render({
+        title,
+        showQueue: false,
+        statusMessage: 'Click the 🏷 next to a planet to tag it (defended / weak / farm target / watch).',
+        toast,
+      });
+      toast = null;
+    }
+
     function refresh() {
       if (isFleet) return refreshFleet();
       if (isHighscore) return refreshHighscore();
       if (isLifeformResearch) return refreshLifeformResearch();
+      if (isGalaxy) return refreshGalaxy();
 
       const state = getState();
       const domLevels = readLevels();
