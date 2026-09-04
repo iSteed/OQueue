@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.4
+// @version      0.12.5
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2825,20 +2825,22 @@
  * OGame's page styles can't bleed into the editor (like panel.js).
  *
  * See dom.js's Galaxy-page comment block for the confirmed markup. The
- * marker is anchored to the row's existing `.cellAction` cell (alongside
- * the espionage/message/buddy/missile icons), falling back to the row
- * itself if that cell is ever missing - a markup change degrades to
- * "marker floats at the row's end" rather than throwing.
+ * marker is appended into the row's existing `.cellAction` cell (alongside
+ * the espionage/message/buddy/missile icons), falling back to appending
+ * directly to the row if that cell is ever missing - a markup change
+ * degrades to "marker floats at the row's end" rather than throwing.
  *
- * REPORTED (2026-09, Zen/Firefox): `.cellAction` is a fixed-width
- * `nowrap` flex row sized to fit exactly its 5 native icons - appending
- * the marker as a normal 6th flex child forced the existing icons to
- * flex-shrink and squish together (not reproduced in the earlier Chrome
- * check, apparently width-dependent). Fixed by taking the marker out of
- * flex flow entirely (`position: absolute`, anchored just outside the
- * cell's right edge) instead of trying to widen the cell - it never
- * contributes to that row's flex-basis, so it can't squeeze anything
- * regardless of viewport/zoom.
+ * REPORTED (2026-09, Zen/Firefox): `.cellAction` is a flex row with no
+ * explicit width - it's naturally sized to fit its 5 native icons - but
+ * gets flex-shrunk by the row whenever the row itself is tight on space
+ * (not reproduced in the earlier Chrome check at a wider viewport), and
+ * that shrink cascades down to squish the icons inside it. Fixing this
+ * by literally widening the cell to a fixed pixel value isn't reliable
+ * (no CSS grid backs these columns - see dom.js - so there's no shared
+ * width to widen safely). Instead, `.cellAction:has(.oqueue-note-cell)`
+ * gets `flex-shrink: 0`, which exempts *only* rows we've tagged with a
+ * marker from the row's shrink algorithm - the cell (and everything in
+ * it) simply takes whatever width its content actually needs.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2863,13 +2865,8 @@
     const style = doc.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      .${CELL_CLASS} {
-        position: absolute;
-        right: -20px;
-        top: 50%;
-        transform: translateY(-50%);
-        display: inline-flex;
-      }
+      .${CELL_CLASS} { display: inline-flex; vertical-align: middle; flex-shrink: 0; }
+      ${Dom.SELECTORS.galaxyActionCell}:has(.${CELL_CLASS}) { flex-shrink: 0; }
       .${MARKER_CLASS} {
         appearance: none;
         -webkit-appearance: none;
@@ -2881,18 +2878,19 @@
         height: 18px;
         min-width: 0;
         min-height: 0;
+        flex-shrink: 0;
         margin: 0;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 14px;
         line-height: 1;
-        background: #e8dcc0;
-        border: 1px solid #b0a487;
-        border-radius: 4px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+        opacity: 0.55;
+        background: none;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
         padding: 0;
       }
-      .${MARKER_CLASS}:hover { background: #f2e8d0; }
-      .${MARKER_CLASS}.oqueue-tagged { border-color: #ffd479; }
+      .${MARKER_CLASS}.oqueue-tagged { opacity: 1; }
     `;
     (doc.head || doc.documentElement).appendChild(style);
   }
@@ -3062,17 +3060,10 @@
   function markerFor(row, doc) {
     let wrapper = row.querySelector(`.${CELL_CLASS}`);
     if (!wrapper) {
-      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
-      const host = actionCell || row;
-      // The wrapper is positioned absolute (see ensureStyle) so it never
-      // contributes to the host's own flex layout - needs the host itself
-      // to be a positioning context, which it isn't by default.
-      const view = doc.defaultView;
-      const hostPosition = view ? view.getComputedStyle(host).position : host.style.position;
-      if (!hostPosition || hostPosition === 'static') host.style.position = 'relative';
       wrapper = doc.createElement('div');
       wrapper.className = CELL_CLASS;
-      host.appendChild(wrapper);
+      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
+      (actionCell || row).appendChild(wrapper);
     }
     let btn = wrapper.querySelector(`.${MARKER_CLASS}`);
     if (!btn) {
