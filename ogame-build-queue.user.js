@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.7
+// @version      0.12.8
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2837,23 +2837,29 @@
  * directly to the row if that cell is ever missing - a markup change
  * degrades to "marker floats at the row's end" rather than throwing.
  *
- * REPORTED (2026-09, Zen/Firefox): `.cellAction` is a flex row with no
- * explicit width - it's naturally sized to fit its 5 native icons - but
- * gets flex-shrunk by the row whenever the row itself is tight on space
- * (not reproduced in the earlier Chrome check at a wider viewport), and
- * that shrink cascades down to squish the icons inside it. Fixing this
- * by literally widening the cell to a fixed pixel value isn't reliable
- * (no CSS grid backs these columns - see dom.js - so there's no shared
- * width to widen safely). Instead every `.cellAction` gets
- * `flex-shrink: 0`, which exempts it from the row's shrink algorithm -
- * the cell (and everything in it) simply takes whatever width its
- * content actually needs. (An earlier version of this fix scoped the
- * rule with `:has(.oqueue-note-cell)` to only affect tagged rows, but
- * `:has()` support isn't universal - an unsupported pseudo-class
+ * CONFIRMED (2026-09, live Chrome session): `.cellAction` actually has
+ * an explicit CSS width (~101px, sized for exactly its 5 native icons,
+ * not content-derived despite appearances - verified by removing the
+ * marker and watching the cell's width stay unchanged). `flex-shrink: 0`
+ * alone (an earlier version of this fix) only stops the *row* from
+ * shrinking the cell as a whole; it does nothing about that fixed width
+ * being too small once a 6th child (the marker) is appended, so the
+ * cell's own internal flex layout was still squeezing something to fit
+ * within it - specifically the leftmost "search for lifeforms" icon
+ * (`.planetDiscoverIcons`), crushed from its natural 17px down to 9px,
+ * since apparently only that icon (not the 4 `<a>` action icons next to
+ * it) lacks its own flex-shrink:0 protection in the game's CSS. Fixed by
+ * also overriding `width: auto !important` on `.cellAction` - confirmed
+ * live across all 15 rows that this restores every native icon
+ * (including the discover one) to its natural width while the cell
+ * grows by ~8-9px to fit, with no row overflow. (An even earlier version
+ * scoped this with `:has(.oqueue-note-cell)` to only affect tagged rows,
+ * but `:has()` support isn't universal - an unsupported pseudo-class
  * invalidates the whole selector rather than degrading gracefully, so
- * the rule silently did nothing on a browser without it. Applying it
- * unconditionally avoids that trap entirely; it's harmless on untagged
- * rows too since we only inject this stylesheet on the Galaxy page.)
+ * the rule silently did nothing on a browser without it. Applying both
+ * rules unconditionally to every `.cellAction` avoids that trap; it's
+ * harmless on untagged rows too since we only inject this stylesheet on
+ * the Galaxy page.)
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2879,7 +2885,7 @@
     style.id = STYLE_ID;
     style.textContent = `
       .${CELL_CLASS} { display: inline-flex; vertical-align: middle; flex-shrink: 0; }
-      ${Dom.SELECTORS.galaxyActionCell} { flex-shrink: 0; }
+      ${Dom.SELECTORS.galaxyActionCell} { flex-shrink: 0; width: auto !important; }
       .${MARKER_CLASS} {
         appearance: none;
         -webkit-appearance: none;
