@@ -19,6 +19,8 @@
         Cleanup: require('./cleanup'),
         Roi: require('./roi'),
         RoiOverlay: require('./roiOverlay'),
+        PlanetNotes: require('./planetNotes'),
+        GalaxyOverlay: require('./galaxyOverlay'),
       }
     );
   } else {
@@ -101,6 +103,9 @@
     if (pageComponent === 'highscore') {
       return { scope: 'highscore' };
     }
+    if (pageComponent === 'galaxy') {
+      return { scope: 'galaxy' };
+    }
     return { scope: 'planet' };
   }
 
@@ -117,10 +122,11 @@
     const isLifeformResearch = context.scope === 'lifeformResearch';
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
+    const isGalaxy = context.scope === 'galaxy';
     const isPlanetQueue = context.scope === 'planet';
     const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
-      isResearch || isLifeformResearch || isFleet || isHighscore
+      isResearch || isLifeformResearch || isFleet || isHighscore || isGalaxy
         ? null
         : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
@@ -133,7 +139,9 @@
             ? 'Fleet - Expeditions'
             : isHighscore
               ? 'Highscore'
-              : `Colony Queue - ${planetId}`;
+              : isGalaxy
+                ? 'Galaxy Scan'
+                : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -206,10 +214,32 @@
       toast = null;
     }
 
+    // Galaxy page (component=galaxy) isn't a queue either - see
+    // galaxyOverlay.js for the actual feature (a clickable tag marker on
+    // each planet row). The panel here just shows a one-line reminder;
+    // getNote/onSave/onClear are thin wrappers over the store so the DOM
+    // layer never touches storage directly (same separation as
+    // getState/setState above).
+    function refreshGalaxy() {
+      OQueue.GalaxyOverlay.render(doc, {
+        getNote: (coordKey) => store.getPlanetNote(coordKey),
+        onSave: (coordKey, note) => store.setPlanetNote(coordKey, note),
+        onClear: (coordKey) => store.deletePlanetNote(coordKey),
+      });
+      panel.render({
+        title,
+        showQueue: false,
+        statusMessage: 'Click the 🏷 next to a planet to tag it (defended / weak / farm target / watch).',
+        toast,
+      });
+      toast = null;
+    }
+
     function refresh() {
       if (isFleet) return refreshFleet();
       if (isHighscore) return refreshHighscore();
       if (isLifeformResearch) return refreshLifeformResearch();
+      if (isGalaxy) return refreshGalaxy();
 
       const state = getState();
       const domLevels = readLevels();

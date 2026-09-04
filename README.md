@@ -50,11 +50,18 @@ Templates (below) work on the per-planet building queue, the account-wide resear
 
 ### Advisory pages (not queues)
 
-Three pages show a read-only advisory instead of a build queue - no done/current/upcoming list, no Edit/Save buttons:
+Four pages show a read-only advisory instead of a build queue - no done/current/upcoming list, no Edit/Save buttons:
 
 - **Fleet Dispatch** — "🚀 Launch expedition" when a slot is free, with a loadout built from your actual hangar (1 Espionage Probe + 1 Pathfinder + however many Large/Small Cargo you own, sized toward the expedition point target - see BuildOrder.md section 10). Currently assumes the top point bracket outright rather than depending on a Highscore-page scrape.
 - **Lifeform Development** (`component=lfresearch`) — the full 18-slot assignment map from BuildOrder.md section 6, all at once: pick, species, category, and each tier's build order, non-native picks starred. Static reference, not tied to which slots you've actually filled yet.
 - **Highscore** (Points tab) — silently caches the rank-1 score; currently unused by the Fleet advisory (see above) but kept in case per-account accuracy below the top bracket matters again later.
+- **Galaxy** — a small 🏷 marker appended to every planet row; click it to tag that coordinate. See [Galaxy-view planet tags](#galaxy-view-planet-tags) below.
+
+## Galaxy-view planet tags
+
+While scanning the galaxy view, click the 🏷 next to any planet row to pop up a tiny editor: pick one of four presets (⚔️ Defended - leave alone, 💤 Weak inactive - not worth it, 🌾 Juicy farm target, ⚠️ Watch) and/or type a short free-text note, then Save. The marker then shows that emoji at a glance on every future visit to that system, with the preset label + note as its tooltip - no need to re-scan to remember why a planet was flagged. Clear removes the tag.
+
+Tags are keyed by galaxy:system:position (not by player or planet id), so they stick to the coordinate even if a different player colonizes it later, and are per-server like the rest of OQueue's state (not shared across universes via Tampermonkey's cross-server template storage).
 
 ## Import / Edit syntax
 

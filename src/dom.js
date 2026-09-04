@@ -42,6 +42,19 @@
  * reuse the same table markup with a different score, so callers must check
  * the URL's `category` param before trusting the result (see currentPage's
  * sibling currentHighscoreCategory() below).
+ *
+ * UNCONFIRMED (not yet checked against a live session - galaxy view wasn't
+ * covered by the 2026-08 sessions above) on the Galaxy page
+ * (component=galaxy): assumed `#galaxytable` holding one `<tr id="row<N>">`
+ * per position (N = 1-15, empty slots included) and `#galaxy_input`/
+ * `#system_input` reflecting the currently-displayed coordinates - these are
+ * long-standing OGame ids, but the galaxy table is repopulated by an AJAX
+ * call when you jump systems without a full page navigation, so
+ * readGalaxyRows()/currentGalaxyCoords() below must be re-read on every poll
+ * tick rather than cached. galaxyOverlay.js deliberately appends a fresh
+ * `<td>` to each row for its marker instead of targeting any cell inside the
+ * row, so it doesn't depend on unconfirmed inner markup - verify the row/id
+ * assumption on a live galaxy page and correct this block if wrong.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -72,6 +85,9 @@
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
     shipAmount: '.amount',
+    galaxyTable: '#galaxytable',
+    galaxyInput: '#galaxy_input',
+    systemInput: '#system_input',
   };
 
   function currentPlanetId(loc) {
@@ -221,6 +237,40 @@
     return counts;
   }
 
+  // doc: Document to read from (the Galaxy page). Returns the currently
+  // displayed { galaxy, system } as numbers, or null if the input fields
+  // aren't present (wrong page / not loaded yet). Read fresh each time
+  // rather than cached - see UNCONFIRMED note above, the table is
+  // AJAX-repopulated on system jumps without a URL change.
+  function currentGalaxyCoords(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const galaxyEl = doc.querySelector(SELECTORS.galaxyInput);
+    const systemEl = doc.querySelector(SELECTORS.systemInput);
+    if (!galaxyEl || !systemEl) return null;
+    const galaxy = parseInt(galaxyEl.value, 10);
+    const system = parseInt(systemEl.value, 10);
+    if (isNaN(galaxy) || isNaN(system)) return null;
+    return { galaxy, system };
+  }
+
+  // doc: Document to read from (the Galaxy page). Returns
+  // [{ position, row }] for every position row found (1-15, including empty
+  // slots - callers decide what, if anything, to render on each).
+  function readGalaxyRows(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return [];
+    const table = doc.querySelector(SELECTORS.galaxyTable);
+    if (!table) return [];
+    const rows = [];
+    table.querySelectorAll('tr[id]').forEach((row) => {
+      const match = /^row(\d+)$/.exec(row.id);
+      if (!match) return;
+      rows.push({ position: parseInt(match[1], 10), row });
+    });
+    return rows;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -265,6 +315,8 @@
     readLifeformBuildingLevels,
     activeLifeformSpecies,
     readPlanetList,
+    currentGalaxyCoords,
+    readGalaxyRows,
     isBuildingActive,
     watchConstructionBox,
     highlightBuilding,

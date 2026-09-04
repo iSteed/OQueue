@@ -76,6 +76,10 @@ test('resolveContext picks the highscore scope on the highscore page', () => {
   assert.equal(resolveContext('highscore').scope, 'highscore');
 });
 
+test('resolveContext picks the galaxy scope on the galaxy page', () => {
+  assert.equal(resolveContext('galaxy').scope, 'galaxy');
+});
+
 test('resolveContext picks the planet scope everywhere else', () => {
   assert.equal(resolveContext('supplies').scope, 'planet');
   assert.equal(resolveContext('facilities').scope, 'planet');
