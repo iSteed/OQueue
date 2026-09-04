@@ -43,18 +43,19 @@
  * the URL's `category` param before trusting the result (see currentPage's
  * sibling currentHighscoreCategory() below).
  *
- * UNCONFIRMED (not yet checked against a live session - galaxy view wasn't
- * covered by the 2026-08 sessions above) on the Galaxy page
- * (component=galaxy): assumed `#galaxytable` holding one `<tr id="row<N>">`
- * per position (N = 1-15, empty slots included) and `#galaxy_input`/
- * `#system_input` reflecting the currently-displayed coordinates - these are
- * long-standing OGame ids, but the galaxy table is repopulated by an AJAX
- * call when you jump systems without a full page navigation, so
- * readGalaxyRows()/currentGalaxyCoords() below must be re-read on every poll
- * tick rather than cached. galaxyOverlay.js deliberately appends a fresh
- * `<td>` to each row for its marker instead of targeting any cell inside the
- * row, so it doesn't depend on unconfirmed inner markup - verify the row/id
- * assumption on a live galaxy page and correct this block if wrong.
+ * CONFIRMED (2026-09-04, server s265-us) on the Galaxy page
+ * (component=galaxy): this is a div grid, not a `<table>` - `div.galaxyTable`
+ * holds one `div.galaxyRow` (id `galaxyRow<N>`, N = 1-15, empty slots
+ * included) per position, each containing `div.galaxyCell` children
+ * (`cellPosition`, `cellPlanetName`, `cellPlayerName`, `cellAction`, etc.).
+ * `#galaxy_input`/`#system_input` reflect the currently-displayed
+ * coordinates. The table is repopulated by an AJAX call when you jump
+ * systems without a full page navigation, so readGalaxyRows()/
+ * currentGalaxyCoords() below must be re-read on every poll tick rather than
+ * cached. galaxyOverlay.js appends its marker into the existing `.cellAction`
+ * cell (the same one holding the espionage/message/buddy/missile icons)
+ * rather than adding a new cell, falling back to appending directly to the
+ * row if `.cellAction` is ever missing.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -85,9 +86,10 @@
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
     shipAmount: '.amount',
-    galaxyTable: '#galaxytable',
+    galaxyTable: '.galaxyTable',
     galaxyInput: '#galaxy_input',
     systemInput: '#system_input',
+    galaxyActionCell: '.cellAction',
   };
 
   function currentPlanetId(loc) {
@@ -263,8 +265,8 @@
     const table = doc.querySelector(SELECTORS.galaxyTable);
     if (!table) return [];
     const rows = [];
-    table.querySelectorAll('tr[id]').forEach((row) => {
-      const match = /^row(\d+)$/.exec(row.id);
+    table.querySelectorAll('[id]').forEach((row) => {
+      const match = /^galaxyRow(\d+)$/.exec(row.id);
       if (!match) return;
       rows.push({ position: parseInt(match[1], 10), row });
     });
