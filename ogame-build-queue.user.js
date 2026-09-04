@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.0
+// @version      0.12.1
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2137,18 +2137,19 @@
  * the URL's `category` param before trusting the result (see currentPage's
  * sibling currentHighscoreCategory() below).
  *
- * UNCONFIRMED (not yet checked against a live session - galaxy view wasn't
- * covered by the 2026-08 sessions above) on the Galaxy page
- * (component=galaxy): assumed `#galaxytable` holding one `<tr id="row<N>">`
- * per position (N = 1-15, empty slots included) and `#galaxy_input`/
- * `#system_input` reflecting the currently-displayed coordinates - these are
- * long-standing OGame ids, but the galaxy table is repopulated by an AJAX
- * call when you jump systems without a full page navigation, so
- * readGalaxyRows()/currentGalaxyCoords() below must be re-read on every poll
- * tick rather than cached. galaxyOverlay.js deliberately appends a fresh
- * `<td>` to each row for its marker instead of targeting any cell inside the
- * row, so it doesn't depend on unconfirmed inner markup - verify the row/id
- * assumption on a live galaxy page and correct this block if wrong.
+ * CONFIRMED (2026-09-04, server s265-us) on the Galaxy page
+ * (component=galaxy): this is a div grid, not a `<table>` - `div.galaxyTable`
+ * holds one `div.galaxyRow` (id `galaxyRow<N>`, N = 1-15, empty slots
+ * included) per position, each containing `div.galaxyCell` children
+ * (`cellPosition`, `cellPlanetName`, `cellPlayerName`, `cellAction`, etc.).
+ * `#galaxy_input`/`#system_input` reflect the currently-displayed
+ * coordinates. The table is repopulated by an AJAX call when you jump
+ * systems without a full page navigation, so readGalaxyRows()/
+ * currentGalaxyCoords() below must be re-read on every poll tick rather than
+ * cached. galaxyOverlay.js appends its marker into the existing `.cellAction`
+ * cell (the same one holding the espionage/message/buddy/missile icons)
+ * rather than adding a new cell, falling back to appending directly to the
+ * row if `.cellAction` is ever missing.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2179,9 +2180,10 @@
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
     shipAmount: '.amount',
-    galaxyTable: '#galaxytable',
+    galaxyTable: '.galaxyTable',
     galaxyInput: '#galaxy_input',
     systemInput: '#system_input',
+    galaxyActionCell: '.cellAction',
   };
 
   function currentPlanetId(loc) {
@@ -2357,8 +2359,8 @@
     const table = doc.querySelector(SELECTORS.galaxyTable);
     if (!table) return [];
     const rows = [];
-    table.querySelectorAll('tr[id]').forEach((row) => {
-      const match = /^row(\d+)$/.exec(row.id);
+    table.querySelectorAll('[id]').forEach((row) => {
+      const match = /^galaxyRow(\d+)$/.exec(row.id);
       if (!match) return;
       rows.push({ position: parseInt(match[1], 10), row });
     });
@@ -2822,9 +2824,11 @@
  * roiOverlay.js) but uses a single shared Shadow DOM host for the popup so
  * OGame's page styles can't bleed into the editor (like panel.js).
  *
- * UNCONFIRMED - see dom.js's Galaxy-page comment block. render() is written
- * defensively (appends a fresh `<td>` rather than targeting inner markup)
- * so a markup mismatch degrades to "no marker column" rather than throwing.
+ * See dom.js's Galaxy-page comment block for the confirmed markup. The
+ * marker is appended into the row's existing `.cellAction` cell (alongside
+ * the espionage/message/buddy/missile icons), falling back to appending
+ * directly to the row if that cell is ever missing - a markup change
+ * degrades to "marker floats at the row's end" rather than throwing.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2849,7 +2853,7 @@
     const style = doc.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      .${CELL_CLASS} { text-align: center; }
+      .${CELL_CLASS} { display: inline-block; vertical-align: middle; }
       .${MARKER_CLASS} {
         cursor: pointer;
         font-size: 14px;
@@ -3027,18 +3031,19 @@
   }
 
   function markerFor(row, doc) {
-    let cell = row.querySelector(`.${CELL_CLASS}`);
-    if (!cell) {
-      cell = doc.createElement('td');
-      cell.className = CELL_CLASS;
-      row.appendChild(cell);
+    let wrapper = row.querySelector(`.${CELL_CLASS}`);
+    if (!wrapper) {
+      wrapper = doc.createElement('div');
+      wrapper.className = CELL_CLASS;
+      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
+      (actionCell || row).appendChild(wrapper);
     }
-    let btn = cell.querySelector(`.${MARKER_CLASS}`);
+    let btn = wrapper.querySelector(`.${MARKER_CLASS}`);
     if (!btn) {
       btn = doc.createElement('button');
       btn.className = MARKER_CLASS;
       btn.type = 'button';
-      cell.appendChild(btn);
+      wrapper.appendChild(btn);
     }
     return btn;
   }

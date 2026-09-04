@@ -6,9 +6,11 @@
  * roiOverlay.js) but uses a single shared Shadow DOM host for the popup so
  * OGame's page styles can't bleed into the editor (like panel.js).
  *
- * UNCONFIRMED - see dom.js's Galaxy-page comment block. render() is written
- * defensively (appends a fresh `<td>` rather than targeting inner markup)
- * so a markup mismatch degrades to "no marker column" rather than throwing.
+ * See dom.js's Galaxy-page comment block for the confirmed markup. The
+ * marker is appended into the row's existing `.cellAction` cell (alongside
+ * the espionage/message/buddy/missile icons), falling back to appending
+ * directly to the row if that cell is ever missing - a markup change
+ * degrades to "marker floats at the row's end" rather than throwing.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -33,7 +35,7 @@
     const style = doc.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      .${CELL_CLASS} { text-align: center; }
+      .${CELL_CLASS} { display: inline-block; vertical-align: middle; }
       .${MARKER_CLASS} {
         cursor: pointer;
         font-size: 14px;
@@ -211,18 +213,19 @@
   }
 
   function markerFor(row, doc) {
-    let cell = row.querySelector(`.${CELL_CLASS}`);
-    if (!cell) {
-      cell = doc.createElement('td');
-      cell.className = CELL_CLASS;
-      row.appendChild(cell);
+    let wrapper = row.querySelector(`.${CELL_CLASS}`);
+    if (!wrapper) {
+      wrapper = doc.createElement('div');
+      wrapper.className = CELL_CLASS;
+      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
+      (actionCell || row).appendChild(wrapper);
     }
-    let btn = cell.querySelector(`.${MARKER_CLASS}`);
+    let btn = wrapper.querySelector(`.${MARKER_CLASS}`);
     if (!btn) {
       btn = doc.createElement('button');
       btn.className = MARKER_CLASS;
       btn.type = 'button';
-      cell.appendChild(btn);
+      wrapper.appendChild(btn);
     }
     return btn;
   }
