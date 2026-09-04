@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.9
+// @version      0.13.0
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2214,6 +2214,16 @@ repeat:
  * cell (the same one holding the espionage/message/buddy/missile icons)
  * rather than adding a new cell, falling back to appending directly to the
  * row if `.cellAction` is ever missing.
+ *
+ * CONFIRMED (2026-09, live session) on every in-game page: the top resource
+ * bar's energy tile carries the current *net* balance as plain text on
+ * `#resources_energy` (e.g. "-109") - readEnergyBalance() below reads that
+ * directly rather than predicting it from formulas.js, which deliberately
+ * only models Metal/Crystal Mine + Deuterium Synthesizer consumption against
+ * Solar Plant/Fusion Reactor production and has no idea lifeform buildings
+ * (or anything else) also draw power. The page's own number already
+ * accounts for every energy-affecting building, whatever it is - see
+ * main.js's rule-mode Solar override, which treats this as ground truth.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2244,6 +2254,7 @@ repeat:
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
     shipAmount: '.amount',
+    energyBalance: '#resources_energy',
     galaxyTable: '.galaxyTable',
     galaxyInput: '#galaxy_input',
     systemInput: '#system_input',
@@ -2377,6 +2388,23 @@ repeat:
     return isNaN(value) ? null : value;
   }
 
+  // doc: Document to read from (any in-game page). Returns the live net
+  // energy balance shown in the resource bar (negative when running a
+  // deficit), or null if the element isn't present. See file header - this
+  // is ground truth from the game itself, not a formula prediction, so it
+  // reflects every energy-affecting building including ones OQueue doesn't
+  // model (lifeform buildings, satellites, ...).
+  function readEnergyBalance(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const el = doc.querySelector(SELECTORS.energyBalance);
+    if (!el) return null;
+    const match = /-?\d[\d,]*/.exec(el.textContent);
+    if (!match) return null;
+    const value = parseInt(match[0].replace(/,/g, ''), 10);
+    return isNaN(value) ? null : value;
+  }
+
   // doc: Document to read from (the Fleet Dispatch page). Returns
   // { [shipCode]: count } for the departure planet - used to check whether
   // an expedition fleet (Pathfinder + cargo) actually exists before
@@ -2476,6 +2504,7 @@ repeat:
     currentHighscoreCategory,
     readExpeditionSlots,
     readRank1Points,
+    readEnergyBalance,
     readShipCounts,
     readBuildingLevels,
     readTechLevels,
@@ -3184,6 +3213,7 @@ repeat:
         Storage: require('./storage'),
         Import: require('./import'),
         Rules: require('./rules'),
+        Formulas: require('./formulas'),
         Templates: require('./templates'),
         Panel: require('./panel'),
         Dom: require('./dom'),
@@ -3214,17 +3244,47 @@ repeat:
     return `${name} ${entry.level}`;
   }
 
+  // A live deficit past this fraction of your *current* Solar Plant output
+  // counts as "excessive" rather than the small, expected dip a
+  // formula-only rule (which only models Metal/Crystal Mine + Deuterium
+  // Synthesizer against Solar/Fusion) naturally runs - see needsEnergyOverride.
+  const EXCESS_ENERGY_DEFICIT_RATIO = 0.2;
+
+  // True when the live, ground-truth energy balance (see dom.js#readEnergyBalance
+  // - reflects every energy-affecting building, including ones OQueue's
+  // formulas don't model, like lifeform buildings) is negative enough that
+  // rule mode should insist on Solar Plant next regardless of what the rule
+  // itself asked for. energyBalance/solarLevel may be null/undefined
+  // (non-planet scopes, or the element not found yet) - both fail safe to "no
+  // override".
+  function needsEnergyOverride(energyBalance, solarLevel) {
+    if (energyBalance == null || energyBalance >= 0) return false;
+    const solarProduction = OQueue.Formulas.energyProductionSolarPlant(solarLevel || 0);
+    if (solarProduction <= 0) return true; // negative balance with no Solar built yet at all
+    return Math.abs(energyBalance) > solarProduction * EXCESS_ENERGY_DEFICIT_RATIO;
+  }
+
   // Resolves the next target for a planet's queue (list or rule mode) given
-  // current levels, without mutating anything - pure derivation from stored state.
-  function computeView(state, currentLevels) {
+  // current levels, without mutating anything - pure derivation from stored
+  // state. energyBalance (planet-queue rule mode only - null elsewhere) is
+  // the live number from dom.js#readEnergyBalance, used as a safety net on
+  // top of the rule's own formula-based Solar pacing - see needsEnergyOverride.
+  function computeView(state, currentLevels, energyBalance) {
     const levels = Object.assign({}, state.cachedLevels, currentLevels);
 
     if (state.mode === 'rule' && state.rule) {
-      const next = OQueue.Rules.resolveRule(state.rule, levels);
+      let next = OQueue.Rules.resolveRule(state.rule, levels);
+      let energyOverride = false;
+      if ((!next || next.code !== 'S') && needsEnergyOverride(energyBalance, levels.S)) {
+        next = OQueue.Buildings.byCode('S');
+        next = Object.assign({}, next, { level: (levels.S || 0) + 1 });
+        energyOverride = true;
+      }
       return {
         current: next ? { label: labelFor(next) } : null,
         upcoming: [],
         doneItems: (state.done || []).map((label) => ({ label })),
+        energyOverride,
       };
     }
 
@@ -3419,10 +3479,20 @@ repeat:
         setState(state);
       }
 
-      const view = computeView(state, domLevels);
+      // Only meaningful for the regular colony building queue - "S" (Solar
+      // Plant) isn't even a valid key in the research/lifeform level
+      // namespaces, so this stays null there and needsEnergyOverride no-ops.
+      const energyBalance = isPlanetQueue ? OQueue.Dom.readEnergyBalance(doc) : null;
+      const view = computeView(state, domLevels, energyBalance);
       const templates =
         isPlanetQueue || isResearch || isLifeform ? Object.keys(store.getTemplates()) : [];
       const { doneItems, moreDoneCount } = capDoneItems(view.doneItems, DONE_HISTORY_LIMIT);
+
+      // Don't clobber an explicit toast already pending from a user action
+      // (Imported, Applied template, ...) - this is just informational.
+      if (view.energyOverride && !toast) {
+        toast = `⚡ Energy balance ${energyBalance} - prioritizing Solar Plant over the rule's own pacing`;
+      }
 
       panel.render({
         title,
