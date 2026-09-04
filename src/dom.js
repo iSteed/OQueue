@@ -56,6 +56,16 @@
  * cell (the same one holding the espionage/message/buddy/missile icons)
  * rather than adding a new cell, falling back to appending directly to the
  * row if `.cellAction` is ever missing.
+ *
+ * CONFIRMED (2026-09, live session) on every in-game page: the top resource
+ * bar's energy tile carries the current *net* balance as plain text on
+ * `#resources_energy` (e.g. "-109") - readEnergyBalance() below reads that
+ * directly rather than predicting it from formulas.js, which deliberately
+ * only models Metal/Crystal Mine + Deuterium Synthesizer consumption against
+ * Solar Plant/Fusion Reactor production and has no idea lifeform buildings
+ * (or anything else) also draw power. The page's own number already
+ * accounts for every energy-affecting building, whatever it is - see
+ * main.js's rule-mode Solar override, which treats this as ground truth.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -86,6 +96,7 @@
     expeditionSlots: '#slots',
     highscoreTable: '#ranks',
     shipAmount: '.amount',
+    energyBalance: '#resources_energy',
     galaxyTable: '.galaxyTable',
     galaxyInput: '#galaxy_input',
     systemInput: '#system_input',
@@ -219,6 +230,23 @@
     return isNaN(value) ? null : value;
   }
 
+  // doc: Document to read from (any in-game page). Returns the live net
+  // energy balance shown in the resource bar (negative when running a
+  // deficit), or null if the element isn't present. See file header - this
+  // is ground truth from the game itself, not a formula prediction, so it
+  // reflects every energy-affecting building including ones OQueue doesn't
+  // model (lifeform buildings, satellites, ...).
+  function readEnergyBalance(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return null;
+    const el = doc.querySelector(SELECTORS.energyBalance);
+    if (!el) return null;
+    const match = /-?\d[\d,]*/.exec(el.textContent);
+    if (!match) return null;
+    const value = parseInt(match[0].replace(/,/g, ''), 10);
+    return isNaN(value) ? null : value;
+  }
+
   // doc: Document to read from (the Fleet Dispatch page). Returns
   // { [shipCode]: count } for the departure planet - used to check whether
   // an expedition fleet (Pathfinder + cargo) actually exists before
@@ -318,6 +346,7 @@
     currentHighscoreCategory,
     readExpeditionSlots,
     readRank1Points,
+    readEnergyBalance,
     readShipCounts,
     readBuildingLevels,
     readTechLevels,

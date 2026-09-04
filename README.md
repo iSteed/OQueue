@@ -201,6 +201,8 @@ repeat:
 
 Metal drives growth forward forever (`Metal = Metal + 1` is, by construction, never satisfied by the level that just built it, so this never goes stale), Crystal trails 2 levels behind, and Solar is checked first every cycle so it never lags - keeping the energy deficit small and bounded instead of runaway negative (Solar's formula produces exactly 2x a mine's output at the same level and exactly 1x a Deuterium Synthesizer's, which is where the `/2 + Deuterium` comes from). "Untouched" means no list built, no rule set, and no completion history yet - a colony you've actually queued something on (list or rule) is left alone. Apply a template or Edit a list to switch a colony back to list mode any time.
 
+**Live energy safety net.** The rule's own Solar pacing is formula-based, and the formula (`formulas.js`) deliberately only models Metal/Crystal Mine + Deuterium Synthesizer consumption against Solar Plant/Fusion Reactor production - it has no idea lifeform buildings (or anything else) also draw power, and there's no verified formula for those in this codebase to add. So in rule mode, `main.js` also reads the *actual* live net energy balance the game shows in the resource bar (`dom.js#readEnergyBalance`, `#resources_energy`) every poll tick - ground truth, since it already reflects every energy-affecting building regardless of what OQueue models. Whenever that live deficit exceeds ~20% of your current Solar Plant output, the panel overrides whatever the rule itself asked for and insists on the next Solar Plant level instead, with a toast explaining why. A small dip under that threshold (the rule's own normal ~1% margin) is left alone.
+
 ```
 repeat:
   - Metal = Crystal + 2
