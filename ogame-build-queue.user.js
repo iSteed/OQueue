@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.5
+// @version      0.12.6
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2353,6 +2353,11 @@
   // doc: Document to read from (the Galaxy page). Returns
   // [{ position, row }] for every position row found (1-15, including empty
   // slots - callers decide what, if anything, to render on each).
+  //
+  // Positions are capped at 15 (a system only ever has 15 slots) - the page
+  // also has a `galaxyRow16` for the "Deep space / Expedition Fleet" footer,
+  // which isn't a planet slot at all and uses completely different internal
+  // markup; tagging it broke that row's layout (REPORTED 2026-09).
   function readGalaxyRows(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
     if (!doc) return [];
@@ -2362,7 +2367,9 @@
     table.querySelectorAll('[id]').forEach((row) => {
       const match = /^galaxyRow(\d+)$/.exec(row.id);
       if (!match) return;
-      rows.push({ position: parseInt(match[1], 10), row });
+      const position = parseInt(match[1], 10);
+      if (position < 1 || position > 15) return;
+      rows.push({ position, row });
     });
     return rows;
   }
