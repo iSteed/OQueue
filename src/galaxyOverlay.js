@@ -65,16 +65,16 @@
         min-height: 0;
         margin: 0;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 12px;
         line-height: 1;
-        opacity: 0.55;
-        background: none;
-        border: none;
-        border-radius: 0;
-        box-shadow: none;
+        background: #e8dcc0;
+        border: 1px solid #b0a487;
+        border-radius: 4px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.4);
         padding: 0;
       }
-      .${MARKER_CLASS}.oqueue-tagged { opacity: 1; }
+      .${MARKER_CLASS}:hover { background: #f2e8d0; }
+      .${MARKER_CLASS}.oqueue-tagged { border-color: #ffd479; }
     `;
     (doc.head || doc.documentElement).appendChild(style);
   }
