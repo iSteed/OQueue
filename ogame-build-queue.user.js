@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.6
+// @version      0.12.7
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2844,10 +2844,16 @@
  * that shrink cascades down to squish the icons inside it. Fixing this
  * by literally widening the cell to a fixed pixel value isn't reliable
  * (no CSS grid backs these columns - see dom.js - so there's no shared
- * width to widen safely). Instead, `.cellAction:has(.oqueue-note-cell)`
- * gets `flex-shrink: 0`, which exempts *only* rows we've tagged with a
- * marker from the row's shrink algorithm - the cell (and everything in
- * it) simply takes whatever width its content actually needs.
+ * width to widen safely). Instead every `.cellAction` gets
+ * `flex-shrink: 0`, which exempts it from the row's shrink algorithm -
+ * the cell (and everything in it) simply takes whatever width its
+ * content actually needs. (An earlier version of this fix scoped the
+ * rule with `:has(.oqueue-note-cell)` to only affect tagged rows, but
+ * `:has()` support isn't universal - an unsupported pseudo-class
+ * invalidates the whole selector rather than degrading gracefully, so
+ * the rule silently did nothing on a browser without it. Applying it
+ * unconditionally avoids that trap entirely; it's harmless on untagged
+ * rows too since we only inject this stylesheet on the Galaxy page.)
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2873,7 +2879,7 @@
     style.id = STYLE_ID;
     style.textContent = `
       .${CELL_CLASS} { display: inline-flex; vertical-align: middle; flex-shrink: 0; }
-      ${Dom.SELECTORS.galaxyActionCell}:has(.${CELL_CLASS}) { flex-shrink: 0; }
+      ${Dom.SELECTORS.galaxyActionCell} { flex-shrink: 0; }
       .${MARKER_CLASS} {
         appearance: none;
         -webkit-appearance: none;
