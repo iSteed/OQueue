@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.12.1
+// @version      0.12.2
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2853,15 +2853,28 @@
     const style = doc.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      .${CELL_CLASS} { display: inline-block; vertical-align: middle; }
+      .${CELL_CLASS} { display: inline-flex; vertical-align: middle; }
       .${MARKER_CLASS} {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        min-width: 0;
+        min-height: 0;
+        margin: 0;
         cursor: pointer;
         font-size: 14px;
         line-height: 1;
         opacity: 0.55;
         background: none;
         border: none;
-        padding: 2px;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
       }
       .${MARKER_CLASS}.oqueue-tagged { opacity: 1; }
     `;
