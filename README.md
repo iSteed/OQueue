@@ -190,6 +190,17 @@ Because a saved template is never overwritten automatically, a built-in you save
 
 Instead of a fixed list, a rule spec continuously recalculates the next target from your *current* levels — so if you build something out of the order you originally planned, it doesn't go "off by one," it just re-evaluates. This is separate from the plain shorthand list above and not yet wired into the panel's Edit box UI (see `src/rules.js` for the engine if you want to construct one programmatically).
 
+**Every untouched colony now starts in rule mode by default** (see `storage.js#DEFAULT_PLANET_RULE`) rather than an empty list:
+
+```
+repeat:
+  Solar >= ceil((Metal + Crystal)/2 + Deuterium)
+  Crystal = Metal - 2
+  Metal = Metal + 1
+```
+
+Metal drives growth forward forever (`Metal = Metal + 1` is, by construction, never satisfied by the level that just built it, so this never goes stale), Crystal trails 2 levels behind, and Solar is checked first every cycle so it never lags - keeping the energy deficit small and bounded instead of runaway negative (Solar's formula produces exactly 2x a mine's output at the same level and exactly 1x a Deuterium Synthesizer's, which is where the `/2 + Deuterium` comes from). "Untouched" means no list built, no rule set, and no completion history yet - a colony you've actually queued something on (list or rule) is left alone. Apply a template or Edit a list to switch a colony back to list mode any time.
+
 ```
 repeat:
   - Metal = Crystal + 2

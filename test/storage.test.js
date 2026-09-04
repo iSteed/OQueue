@@ -6,10 +6,26 @@ function freshStore() {
   return createStore(memoryBackend());
 }
 
-test('getPlanetState returns default state when unset', () => {
+test('getPlanetState returns the self-sustaining rule default when unset', () => {
   const store = freshStore();
   const state = store.getPlanetState('123');
-  assert.deepEqual(state, { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] });
+  assert.equal(state.mode, 'rule');
+  assert.equal(state.list.length, 0);
+  assert.ok(state.rule);
+  assert.deepEqual(state.cachedLevels, {});
+  assert.deepEqual(state.done, []);
+});
+
+test('the default rule keeps resolving forward without ever getting stuck', () => {
+  const store = freshStore();
+  const { resolveRule } = require('../src/rules');
+  const spec = store.getPlanetState('123').rule;
+  let levels = {};
+  for (let i = 0; i < 30; i++) {
+    const next = resolveRule(spec, levels);
+    assert.ok(next, `rule got stuck after ${i} steps at levels ${JSON.stringify(levels)}`);
+    levels[next.code] = next.level;
+  }
 });
 
 test('setPlanetState / getPlanetState round-trips', () => {
@@ -20,12 +36,31 @@ test('setPlanetState / getPlanetState round-trips', () => {
   assert.equal(state.cachedLevels.M, 8);
 });
 
+test('getPlanetState upgrades an already-stored-but-never-customized planet to the rule default', () => {
+  const store = freshStore();
+  // Simulates a colony visited once before this default existed - main.js's
+  // auto-detect cachedLevels merge writes this shape even if the player
+  // never touched Edit/templates.
+  store.setPlanetState('123', { mode: 'list', list: [], rule: null, cachedLevels: { M: 3 }, done: [] });
+  const state = store.getPlanetState('123');
+  assert.equal(state.mode, 'rule');
+  assert.ok(state.rule);
+});
+
+test('getPlanetState leaves an actually-customized planet alone', () => {
+  const store = freshStore();
+  store.setPlanetState('123', { mode: 'list', list: [{ code: 'M', level: 5 }], rule: null, cachedLevels: {}, done: [] });
+  const state = store.getPlanetState('123');
+  assert.equal(state.mode, 'list');
+  assert.equal(state.list.length, 1);
+});
+
 test('updatePlanetState merges patch into existing state', () => {
   const store = freshStore();
   store.updatePlanetState('123', { cachedLevels: { M: 5 } });
   const state = store.updatePlanetState('123', { cachedLevels: { M: 6 } });
   assert.equal(state.cachedLevels.M, 6);
-  assert.equal(state.mode, 'list'); // untouched default field preserved
+  assert.equal(state.mode, 'rule'); // untouched default field (now rule mode) preserved
 });
 
 test('getLifeformState returns default state when unset', () => {
@@ -133,7 +168,10 @@ test('templates use a separate backend from planet/account state when one is sup
   // same template, proving templates are reachable across "servers".
   const otherServerStore = createStore(memoryBackend(), templatesBackend);
   assert.ok(otherServerStore.getTemplates()['New Colony']);
-  assert.deepEqual(otherServerStore.getPlanetState('123'), { mode: 'list', list: [], rule: null, cachedLevels: {}, done: [] });
+  // Its own main backend never got a planet:123 key at all (only the
+  // templates backend is shared) - a genuinely fresh key, so this is the
+  // rule default, not the plain empty-list one.
+  assert.equal(otherServerStore.getPlanetState('123').mode, 'rule');
 });
 
 test('templates fall back to the main backend when no separate templates backend is given (e.g. @grant none)', () => {
