@@ -21,7 +21,9 @@
         Roi: require('./roi'),
         RoiOverlay: require('./roiOverlay'),
         PlanetNotes: require('./planetNotes'),
+        NoteOverlay: require('./noteOverlay'),
         GalaxyOverlay: require('./galaxyOverlay'),
+        MessagesOverlay: require('./messagesOverlay'),
       }
     );
   } else {
@@ -137,6 +139,9 @@
     if (pageComponent === 'galaxy') {
       return { scope: 'galaxy' };
     }
+    if (pageComponent === 'messages') {
+      return { scope: 'messages' };
+    }
     return { scope: 'planet' };
   }
 
@@ -154,10 +159,11 @@
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
     const isGalaxy = context.scope === 'galaxy';
+    const isMessages = context.scope === 'messages';
     const isPlanetQueue = context.scope === 'planet';
     const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
-      isResearch || isLifeformResearch || isFleet || isHighscore || isGalaxy
+      isResearch || isLifeformResearch || isFleet || isHighscore || isGalaxy || isMessages
         ? null
         : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
@@ -172,7 +178,9 @@
               ? 'Highscore'
               : isGalaxy
                 ? 'Galaxy Scan'
-                : `Colony Queue - ${planetId}`;
+                : isMessages
+                  ? 'Messages'
+                  : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -245,22 +253,41 @@
       toast = null;
     }
 
-    // Galaxy page (component=galaxy) isn't a queue either - see
-    // galaxyOverlay.js for the actual feature (a clickable tag marker on
-    // each planet row). The panel here just shows a one-line reminder;
-    // getNote/onSave/onClear are thin wrappers over the store so the DOM
-    // layer never touches storage directly (same separation as
-    // getState/setState above).
-    function refreshGalaxy() {
-      OQueue.GalaxyOverlay.render(doc, {
+    // Shared by Galaxy and Messages (both use noteOverlay.js's marker/popup
+    // against the same oqueue:note: store) - thin wrappers so the DOM layer
+    // never touches storage directly (same separation as getState/setState
+    // above).
+    function noteHandlers() {
+      return {
         getNote: (coordKey) => store.getPlanetNote(coordKey),
         onSave: (coordKey, note) => store.setPlanetNote(coordKey, note),
         onClear: (coordKey) => store.deletePlanetNote(coordKey),
-      });
+      };
+    }
+
+    // Galaxy page (component=galaxy) isn't a queue either - see
+    // galaxyOverlay.js for the actual feature (a clickable tag marker on
+    // each planet row). The panel here just shows a one-line reminder.
+    function refreshGalaxy() {
+      OQueue.GalaxyOverlay.render(doc, noteHandlers());
       panel.render({
         title,
         showQueue: false,
         statusMessage: 'Click the 🏷 next to a planet to tag it (defended / weak / farm target / watch).',
+        toast,
+      });
+      toast = null;
+    }
+
+    // Messages page (component=messages) - same tag marker as Galaxy (see
+    // messagesOverlay.js), reachable straight from an espionage/combat
+    // report's own coordinate without switching pages first.
+    function refreshMessages() {
+      OQueue.MessagesOverlay.render(doc, noteHandlers());
+      panel.render({
+        title,
+        showQueue: false,
+        statusMessage: 'Click the 🏷 on a message with a coordinate to tag that planet.',
         toast,
       });
       toast = null;
@@ -271,6 +298,7 @@
       if (isHighscore) return refreshHighscore();
       if (isLifeformResearch) return refreshLifeformResearch();
       if (isGalaxy) return refreshGalaxy();
+      if (isMessages) return refreshMessages();
 
       const state = getState();
       const domLevels = readLevels();

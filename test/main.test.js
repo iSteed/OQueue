@@ -136,6 +136,10 @@ test('resolveContext picks the galaxy scope on the galaxy page', () => {
   assert.equal(resolveContext('galaxy').scope, 'galaxy');
 });
 
+test('resolveContext picks the messages scope on the messages page', () => {
+  assert.equal(resolveContext('messages').scope, 'messages');
+});
+
 test('resolveContext picks the planet scope everywhere else', () => {
   assert.equal(resolveContext('supplies').scope, 'planet');
   assert.equal(resolveContext('facilities').scope, 'planet');
