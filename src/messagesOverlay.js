@@ -5,9 +5,11 @@
  * just reachable straight from an espionage report/combat report without
  * switching pages to look the coordinate up in the galaxy view first.
  *
- * The marker is appended into the message's collapsed-row icon strip
- * (`.msgFilteredHeaderCell_actions` - star/reply/forward/...), falling back
- * to the message's own container if that cell is ever missing.
+ * The marker is appended into whichever icon-strip container this message's
+ * row actually has - `.msgFilteredHeaderCell_actions` (filtered/collapsible
+ * rows, e.g. espionage) or `message-footer.msg_actions` (Combat Reports),
+ * see dom.js's Messages-page comment block - falling back to the message's
+ * own container if neither is present.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -34,7 +36,10 @@
 
     Dom.readMessageRows(doc).forEach(({ galaxy, system, position, row }) => {
       const coordKey = PlanetNotes.coordKey(galaxy, system, position);
-      const container = row.querySelector(Dom.SELECTORS.messageActionsCell) || row;
+      const container =
+        row.querySelector(Dom.SELECTORS.messageActionsCell) ||
+        row.querySelector(Dom.SELECTORS.messageFooterActions) ||
+        row;
       NoteOverlay.renderMarker(doc, container, coordKey, options);
     });
   }

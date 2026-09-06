@@ -11,6 +11,14 @@
  * OGame's page styles can't bleed into the editor (like panel.js). One
  * popup host total, reused across every marker on every page this loads on
  * - not one per marker.
+ *
+ * REPORTED (2026-09, Combat Reports tab): the marker was present, correctly
+ * positioned, and fully clickable, but effectively invisible - its glyph
+ * inherited `color: rgb(0,0,0)` from `message-footer.msg_actions`'s own CSS
+ * context (unlike the containers used elsewhere, which happen to inherit a
+ * light color already), rendering pure black text on a near-black
+ * background. The marker button now sets its own explicit `color` instead
+ * of relying on whatever a given container happens to inherit.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -51,6 +59,7 @@
         cursor: pointer;
         font-size: 14px;
         line-height: 1;
+        color: #e6e6e6;
         opacity: 0.55;
         background: none;
         border: none;

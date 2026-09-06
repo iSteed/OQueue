@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.13.1
+// @version      0.13.2
 // @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and planet tagging from the galaxy view or straight off a message.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
@@ -2226,17 +2226,29 @@ repeat:
  * main.js's rule-mode Solar override, which treats this as ground truth.
  *
  * CONFIRMED (2026-09, server s265-us) on the Messages page
- * (component=messages): each message - collapsed row and all - is a single
- * element carrying `data-messages-filters-coordinates="[g:s:p]"` directly
- * (confirmed on an espionage report; presumably present on any message type
- * with a real coordinate, absent/unparseable on ones without - Expeditions
- * reports on a "Deep space" outcome, say - readMessageRows() below just
- * skips those rather than guessing). The collapsed row's icon strip
- * (star/reply/forward/...) is `.msgFilteredHeaderCell_actions`, a flex
- * container with `flex-wrap: wrap` (unlike the Galaxy page's `nowrap`
- * `.cellAction`) - appending a marker here wraps to a new line under
- * pressure rather than squeezing the native icons, so this doesn't need
- * galaxyOverlay.js's width-override fix.
+ * (component=messages): filtered/collapsible rows (confirmed on an
+ * espionage report) carry `data-messages-filters-coordinates="[g:s:p]"`
+ * directly on the message element. Their icon strip (star/reply/forward/...)
+ * is `.msgFilteredHeaderCell_actions`, a flex container with
+ * `flex-wrap: wrap` (unlike the Galaxy page's `nowrap` `.cellAction`) -
+ * appending a marker here wraps to a new line under pressure rather than
+ * squeezing the native icons, so this doesn't need galaxyOverlay.js's
+ * width-override fix.
+ *
+ * CONFIRMED (2026-09, server s265-us) on the Combat Reports tab: these
+ * rows (`.msg[data-msg-id]`, both the brief "contact lost" ones and full
+ * battle reports) do NOT carry that data attribute at all - the coordinate
+ * is plain text inside the row's own title link (`.msgTitle a`, e.g.
+ * "Combat Report Daddys House  [1:76:7]") instead, so readMessageRows()
+ * below falls back to parsing that when the attribute is missing. Their
+ * icon strip lives in `message-footer.msg_actions` - wide (~630px) with only
+ * ~5 icons and a "More details" label in it, so plenty of slack to append a
+ * marker into safely without the squish risk `.cellAction`/
+ * `.msgFilteredHeaderCell_actions` needed guarding against.
+ *
+ * Any message type with neither of the above (no coordinate at all -
+ * Expeditions reports on a "Deep space" outcome, say) is just skipped
+ * rather than guessed at.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2274,6 +2286,9 @@ repeat:
     galaxyActionCell: '.cellAction',
     messageCoordAttr: 'data-messages-filters-coordinates',
     messageActionsCell: '.msgFilteredHeaderCell_actions',
+    messageContainer: '.msg[data-msg-id]',
+    messageTitleLink: '.msgTitle a',
+    messageFooterActions: 'message-footer.msg_actions',
   };
 
   function currentPlanetId(loc) {
@@ -2489,17 +2504,33 @@ repeat:
     doc = doc || (typeof document !== 'undefined' ? document : null);
     if (!doc) return [];
     const rows = [];
-    doc.querySelectorAll(`[${SELECTORS.messageCoordAttr}]`).forEach((row) => {
-      const raw = row.getAttribute(SELECTORS.messageCoordAttr) || '';
-      const match = /\[(\d+):(\d+):(\d+)\]/.exec(raw);
+    const seen = new Set();
+
+    function addRow(row, raw) {
+      if (seen.has(row)) return;
+      const match = /\[(\d+):(\d+):(\d+)\]/.exec(raw || '');
       if (!match) return;
+      seen.add(row);
       rows.push({
         galaxy: parseInt(match[1], 10),
         system: parseInt(match[2], 10),
         position: parseInt(match[3], 10),
         row,
       });
+    }
+
+    doc.querySelectorAll(`[${SELECTORS.messageCoordAttr}]`).forEach((row) => {
+      addRow(row, row.getAttribute(SELECTORS.messageCoordAttr));
     });
+
+    // Combat Reports (and presumably other types without the filter data
+    // attribute) - fall back to the coordinate in the row's own title link.
+    doc.querySelectorAll(SELECTORS.messageContainer).forEach((row) => {
+      if (seen.has(row)) return;
+      const titleLink = row.querySelector(SELECTORS.messageTitleLink);
+      if (titleLink) addRow(row, titleLink.textContent);
+    });
+
     return rows;
   }
 
@@ -2967,6 +2998,14 @@ repeat:
  * OGame's page styles can't bleed into the editor (like panel.js). One
  * popup host total, reused across every marker on every page this loads on
  * - not one per marker.
+ *
+ * REPORTED (2026-09, Combat Reports tab): the marker was present, correctly
+ * positioned, and fully clickable, but effectively invisible - its glyph
+ * inherited `color: rgb(0,0,0)` from `message-footer.msg_actions`'s own CSS
+ * context (unlike the containers used elsewhere, which happen to inherit a
+ * light color already), rendering pure black text on a near-black
+ * background. The marker button now sets its own explicit `color` instead
+ * of relying on whatever a given container happens to inherit.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -3007,6 +3046,7 @@ repeat:
         cursor: pointer;
         font-size: 14px;
         line-height: 1;
+        color: #e6e6e6;
         opacity: 0.55;
         background: none;
         border: none;
@@ -3290,9 +3330,11 @@ repeat:
  * just reachable straight from an espionage report/combat report without
  * switching pages to look the coordinate up in the galaxy view first.
  *
- * The marker is appended into the message's collapsed-row icon strip
- * (`.msgFilteredHeaderCell_actions` - star/reply/forward/...), falling back
- * to the message's own container if that cell is ever missing.
+ * The marker is appended into whichever icon-strip container this message's
+ * row actually has - `.msgFilteredHeaderCell_actions` (filtered/collapsible
+ * rows, e.g. espionage) or `message-footer.msg_actions` (Combat Reports),
+ * see dom.js's Messages-page comment block - falling back to the message's
+ * own container if neither is present.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -3319,7 +3361,10 @@ repeat:
 
     Dom.readMessageRows(doc).forEach(({ galaxy, system, position, row }) => {
       const coordKey = PlanetNotes.coordKey(galaxy, system, position);
-      const container = row.querySelector(Dom.SELECTORS.messageActionsCell) || row;
+      const container =
+        row.querySelector(Dom.SELECTORS.messageActionsCell) ||
+        row.querySelector(Dom.SELECTORS.messageFooterActions) ||
+        row;
       NoteOverlay.renderMarker(doc, container, coordKey, options);
     });
   }

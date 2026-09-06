@@ -68,17 +68,29 @@
  * main.js's rule-mode Solar override, which treats this as ground truth.
  *
  * CONFIRMED (2026-09, server s265-us) on the Messages page
- * (component=messages): each message - collapsed row and all - is a single
- * element carrying `data-messages-filters-coordinates="[g:s:p]"` directly
- * (confirmed on an espionage report; presumably present on any message type
- * with a real coordinate, absent/unparseable on ones without - Expeditions
- * reports on a "Deep space" outcome, say - readMessageRows() below just
- * skips those rather than guessing). The collapsed row's icon strip
- * (star/reply/forward/...) is `.msgFilteredHeaderCell_actions`, a flex
- * container with `flex-wrap: wrap` (unlike the Galaxy page's `nowrap`
- * `.cellAction`) - appending a marker here wraps to a new line under
- * pressure rather than squeezing the native icons, so this doesn't need
- * galaxyOverlay.js's width-override fix.
+ * (component=messages): filtered/collapsible rows (confirmed on an
+ * espionage report) carry `data-messages-filters-coordinates="[g:s:p]"`
+ * directly on the message element. Their icon strip (star/reply/forward/...)
+ * is `.msgFilteredHeaderCell_actions`, a flex container with
+ * `flex-wrap: wrap` (unlike the Galaxy page's `nowrap` `.cellAction`) -
+ * appending a marker here wraps to a new line under pressure rather than
+ * squeezing the native icons, so this doesn't need galaxyOverlay.js's
+ * width-override fix.
+ *
+ * CONFIRMED (2026-09, server s265-us) on the Combat Reports tab: these
+ * rows (`.msg[data-msg-id]`, both the brief "contact lost" ones and full
+ * battle reports) do NOT carry that data attribute at all - the coordinate
+ * is plain text inside the row's own title link (`.msgTitle a`, e.g.
+ * "Combat Report Daddys House  [1:76:7]") instead, so readMessageRows()
+ * below falls back to parsing that when the attribute is missing. Their
+ * icon strip lives in `message-footer.msg_actions` - wide (~630px) with only
+ * ~5 icons and a "More details" label in it, so plenty of slack to append a
+ * marker into safely without the squish risk `.cellAction`/
+ * `.msgFilteredHeaderCell_actions` needed guarding against.
+ *
+ * Any message type with neither of the above (no coordinate at all -
+ * Expeditions reports on a "Deep space" outcome, say) is just skipped
+ * rather than guessed at.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -116,6 +128,9 @@
     galaxyActionCell: '.cellAction',
     messageCoordAttr: 'data-messages-filters-coordinates',
     messageActionsCell: '.msgFilteredHeaderCell_actions',
+    messageContainer: '.msg[data-msg-id]',
+    messageTitleLink: '.msgTitle a',
+    messageFooterActions: 'message-footer.msg_actions',
   };
 
   function currentPlanetId(loc) {
@@ -331,17 +346,33 @@
     doc = doc || (typeof document !== 'undefined' ? document : null);
     if (!doc) return [];
     const rows = [];
-    doc.querySelectorAll(`[${SELECTORS.messageCoordAttr}]`).forEach((row) => {
-      const raw = row.getAttribute(SELECTORS.messageCoordAttr) || '';
-      const match = /\[(\d+):(\d+):(\d+)\]/.exec(raw);
+    const seen = new Set();
+
+    function addRow(row, raw) {
+      if (seen.has(row)) return;
+      const match = /\[(\d+):(\d+):(\d+)\]/.exec(raw || '');
       if (!match) return;
+      seen.add(row);
       rows.push({
         galaxy: parseInt(match[1], 10),
         system: parseInt(match[2], 10),
         position: parseInt(match[3], 10),
         row,
       });
+    }
+
+    doc.querySelectorAll(`[${SELECTORS.messageCoordAttr}]`).forEach((row) => {
+      addRow(row, row.getAttribute(SELECTORS.messageCoordAttr));
     });
+
+    // Combat Reports (and presumably other types without the filter data
+    // attribute) - fall back to the coordinate in the row's own title link.
+    doc.querySelectorAll(SELECTORS.messageContainer).forEach((row) => {
+      if (seen.has(row)) return;
+      const titleLink = row.querySelector(SELECTORS.messageTitleLink);
+      if (titleLink) addRow(row, titleLink.textContent);
+    });
+
     return rows;
   }
 
