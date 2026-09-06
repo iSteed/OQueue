@@ -66,6 +66,19 @@
  * (or anything else) also draw power. The page's own number already
  * accounts for every energy-affecting building, whatever it is - see
  * main.js's rule-mode Solar override, which treats this as ground truth.
+ *
+ * CONFIRMED (2026-09, server s265-us) on the Messages page
+ * (component=messages): each message - collapsed row and all - is a single
+ * element carrying `data-messages-filters-coordinates="[g:s:p]"` directly
+ * (confirmed on an espionage report; presumably present on any message type
+ * with a real coordinate, absent/unparseable on ones without - Expeditions
+ * reports on a "Deep space" outcome, say - readMessageRows() below just
+ * skips those rather than guessing). The collapsed row's icon strip
+ * (star/reply/forward/...) is `.msgFilteredHeaderCell_actions`, a flex
+ * container with `flex-wrap: wrap` (unlike the Galaxy page's `nowrap`
+ * `.cellAction`) - appending a marker here wraps to a new line under
+ * pressure rather than squeezing the native icons, so this doesn't need
+ * galaxyOverlay.js's width-override fix.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -101,6 +114,8 @@
     galaxyInput: '#galaxy_input',
     systemInput: '#system_input',
     galaxyActionCell: '.cellAction',
+    messageCoordAttr: 'data-messages-filters-coordinates',
+    messageActionsCell: '.msgFilteredHeaderCell_actions',
   };
 
   function currentPlanetId(loc) {
@@ -308,6 +323,28 @@
     return rows;
   }
 
+  // doc: Document to read from (the Messages page). Returns
+  // [{ galaxy, system, position, row }] for every message that carries a
+  // parseable coordinate - see file header. Read fresh each poll tick, same
+  // as readGalaxyRows - messages get added/removed/re-filtered live.
+  function readMessageRows(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return [];
+    const rows = [];
+    doc.querySelectorAll(`[${SELECTORS.messageCoordAttr}]`).forEach((row) => {
+      const raw = row.getAttribute(SELECTORS.messageCoordAttr) || '';
+      const match = /\[(\d+):(\d+):(\d+)\]/.exec(raw);
+      if (!match) return;
+      rows.push({
+        galaxy: parseInt(match[1], 10),
+        system: parseInt(match[2], 10),
+        position: parseInt(match[3], 10),
+        row,
+      });
+    });
+    return rows;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -355,6 +392,7 @@
     readPlanetList,
     currentGalaxyCoords,
     readGalaxyRows,
+    readMessageRows,
     isBuildingActive,
     watchConstructionBox,
     highlightBuilding,

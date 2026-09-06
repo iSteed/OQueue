@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OQueue - OGame Build Queue
 // @namespace    https://github.com/iSteed/OQueue
-// @version      0.13.0
-// @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and galaxy-view planet tagging.
+// @version      0.13.1
+// @description  Floating build-queue panel for OGame: manual checklist, DOM auto-detection, multi-planet, import, templates, a rule-based planner, and planet tagging from the galaxy view or straight off a message.
 // @match        https://*.ogame.gameforge.com/game/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -2224,6 +2224,19 @@ repeat:
  * (or anything else) also draw power. The page's own number already
  * accounts for every energy-affecting building, whatever it is - see
  * main.js's rule-mode Solar override, which treats this as ground truth.
+ *
+ * CONFIRMED (2026-09, server s265-us) on the Messages page
+ * (component=messages): each message - collapsed row and all - is a single
+ * element carrying `data-messages-filters-coordinates="[g:s:p]"` directly
+ * (confirmed on an espionage report; presumably present on any message type
+ * with a real coordinate, absent/unparseable on ones without - Expeditions
+ * reports on a "Deep space" outcome, say - readMessageRows() below just
+ * skips those rather than guessing). The collapsed row's icon strip
+ * (star/reply/forward/...) is `.msgFilteredHeaderCell_actions`, a flex
+ * container with `flex-wrap: wrap` (unlike the Galaxy page's `nowrap`
+ * `.cellAction`) - appending a marker here wraps to a new line under
+ * pressure rather than squeezing the native icons, so this doesn't need
+ * galaxyOverlay.js's width-override fix.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -2259,6 +2272,8 @@ repeat:
     galaxyInput: '#galaxy_input',
     systemInput: '#system_input',
     galaxyActionCell: '.cellAction',
+    messageCoordAttr: 'data-messages-filters-coordinates',
+    messageActionsCell: '.msgFilteredHeaderCell_actions',
   };
 
   function currentPlanetId(loc) {
@@ -2466,6 +2481,28 @@ repeat:
     return rows;
   }
 
+  // doc: Document to read from (the Messages page). Returns
+  // [{ galaxy, system, position, row }] for every message that carries a
+  // parseable coordinate - see file header. Read fresh each poll tick, same
+  // as readGalaxyRows - messages get added/removed/re-filtered live.
+  function readMessageRows(doc) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return [];
+    const rows = [];
+    doc.querySelectorAll(`[${SELECTORS.messageCoordAttr}]`).forEach((row) => {
+      const raw = row.getAttribute(SELECTORS.messageCoordAttr) || '';
+      const match = /\[(\d+):(\d+):(\d+)\]/.exec(raw);
+      if (!match) return;
+      rows.push({
+        galaxy: parseInt(match[1], 10),
+        system: parseInt(match[2], 10),
+        position: parseInt(match[3], 10),
+        row,
+      });
+    });
+    return rows;
+  }
+
   // Returns true while a building is actively under construction.
   function isBuildingActive(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -2513,6 +2550,7 @@ repeat:
     readPlanetList,
     currentGalaxyCoords,
     readGalaxyRows,
+    readMessageRows,
     isBuildingActive,
     watchConstructionBox,
     highlightBuilding,
@@ -2915,61 +2953,36 @@ repeat:
   return { PRESETS, presetById, coordKey, buildNote, markerFor };
 });
 
-// ---- galaxyOverlay.js --------------------------------------------
+// ---- noteOverlay.js ----------------------------------------------
 /*
- * Galaxy-view planet tagging: a small clickable marker appended to each
- * planet row on the Galaxy page (component=galaxy) showing whatever note is
- * saved for that coordinate (see planetNotes.js), and a popup for setting
- * one. Writes directly into the game's own DOM for the marker (like
+ * Shared marker + popup UI for tagging a coordinate with a planet note (see
+ * planetNotes.js) - the actual DOM injection logic behind both
+ * galaxyOverlay.js (Galaxy page rows) and messagesOverlay.js (message rows
+ * on the Messages page). Neither of those knows how to draw a marker or run
+ * the popup itself; they just find their own page's rows/coordKeys and hand
+ * each one to renderMarker() here.
+ *
+ * Writes directly into the game's own DOM for the marker (like
  * roiOverlay.js) but uses a single shared Shadow DOM host for the popup so
- * OGame's page styles can't bleed into the editor (like panel.js).
- *
- * See dom.js's Galaxy-page comment block for the confirmed markup. The
- * marker is appended into the row's existing `.cellAction` cell (alongside
- * the espionage/message/buddy/missile icons), falling back to appending
- * directly to the row if that cell is ever missing - a markup change
- * degrades to "marker floats at the row's end" rather than throwing.
- *
- * CONFIRMED (2026-09, live Chrome session): `.cellAction` actually has
- * an explicit CSS width (~101px, sized for exactly its 5 native icons,
- * not content-derived despite appearances - verified by removing the
- * marker and watching the cell's width stay unchanged). `flex-shrink: 0`
- * alone (an earlier version of this fix) only stops the *row* from
- * shrinking the cell as a whole; it does nothing about that fixed width
- * being too small once a 6th child (the marker) is appended, so the
- * cell's own internal flex layout was still squeezing something to fit
- * within it - specifically the leftmost "search for lifeforms" icon
- * (`.planetDiscoverIcons`), crushed from its natural 17px down to 9px,
- * since apparently only that icon (not the 4 `<a>` action icons next to
- * it) lacks its own flex-shrink:0 protection in the game's CSS. Fixed by
- * also overriding `width: auto !important` on `.cellAction` - confirmed
- * live across all 15 rows that this restores every native icon
- * (including the discover one) to its natural width while the cell
- * grows by ~8-9px to fit, with no row overflow. (An even earlier version
- * scoped this with `:has(.oqueue-note-cell)` to only affect tagged rows,
- * but `:has()` support isn't universal - an unsupported pseudo-class
- * invalidates the whole selector rather than degrading gracefully, so
- * the rule silently did nothing on a browser without it. Applying both
- * rules unconditionally to every `.cellAction` avoids that trap; it's
- * harmless on untagged rows too since we only inject this stylesheet on
- * the Galaxy page.)
+ * OGame's page styles can't bleed into the editor (like panel.js). One
+ * popup host total, reused across every marker on every page this loads on
+ * - not one per marker.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = factory(
-      typeof require !== 'undefined' ? require('./planetNotes') : root.OQueue.PlanetNotes,
-      typeof require !== 'undefined' ? require('./dom') : root.OQueue.Dom
+      typeof require !== 'undefined' ? require('./planetNotes') : root.OQueue.PlanetNotes
     );
   } else {
     root.OQueue = root.OQueue || {};
-    root.OQueue.GalaxyOverlay = factory(root.OQueue.PlanetNotes, root.OQueue.Dom);
+    root.OQueue.NoteOverlay = factory(root.OQueue.PlanetNotes);
   }
-})(typeof self !== 'undefined' ? self : this, function (PlanetNotes, Dom) {
+})(typeof self !== 'undefined' ? self : this, function (PlanetNotes) {
   'use strict';
 
   const MARKER_CLASS = 'oqueue-note-marker';
   const CELL_CLASS = 'oqueue-note-cell';
-  const STYLE_ID = 'oqueue-galaxy-style';
+  const STYLE_ID = 'oqueue-note-style';
   const POPUP_HOST_ID = 'oqueue-note-popup-host';
 
   function ensureStyle(doc) {
@@ -2978,7 +2991,6 @@ repeat:
     style.id = STYLE_ID;
     style.textContent = `
       .${CELL_CLASS} { display: inline-flex; vertical-align: middle; flex-shrink: 0; }
-      ${Dom.SELECTORS.galaxyActionCell} { flex-shrink: 0; width: auto !important; }
       .${MARKER_CLASS} {
         appearance: none;
         -webkit-appearance: none;
@@ -3018,8 +3030,8 @@ repeat:
     return node;
   }
 
-  // One popup host, created lazily and reused across every marker click
-  // (repositioned/repopulated each time) rather than one per row.
+  // One popup host, created lazily and reused across every marker click on
+  // every page (repositioned/repopulated each time) rather than one per row.
   function ensurePopup(doc) {
     let host = doc.getElementById(POPUP_HOST_ID);
     if (host) return host;
@@ -3142,40 +3154,14 @@ repeat:
     popup.classList.remove('hidden');
   }
 
-  // doc: live document. options:
-  //   getNote(coordKey) -> note|null    - looks up a saved note
-  //   onSave(coordKey, note)            - persist a note (preset/emoji/text)
-  //   onClear(coordKey)                 - delete a note
-  function render(doc, options) {
-    doc = doc || (typeof document !== 'undefined' ? document : null);
-    if (!doc) return;
-    const coords = Dom.currentGalaxyCoords(doc);
-    if (!coords) return;
-    ensureStyle(doc);
-
-    Dom.readGalaxyRows(doc).forEach(({ position, row }) => {
-      const coordKey = PlanetNotes.coordKey(coords.galaxy, coords.system, position);
-      const note = options.getNote(coordKey);
-      const marker = markerFor(row, doc);
-      const info = PlanetNotes.markerFor(note);
-      marker.textContent = info.glyph;
-      marker.title = `OQueue: ${info.title}`;
-      marker.classList.toggle('oqueue-tagged', !!note);
-      marker.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openPopup(doc, marker, coordKey, note, options);
-      };
-    });
-  }
-
-  function markerFor(row, doc) {
-    let wrapper = row.querySelector(`.${CELL_CLASS}`);
+  // Finds (or creates) this container's marker button - idempotent, safe to
+  // call every poll tick without duplicating markers.
+  function markerFor(doc, container) {
+    let wrapper = container.querySelector(`.${CELL_CLASS}`);
     if (!wrapper) {
       wrapper = doc.createElement('div');
       wrapper.className = CELL_CLASS;
-      const actionCell = row.querySelector(Dom.SELECTORS.galaxyActionCell);
-      (actionCell || row).appendChild(wrapper);
+      container.appendChild(wrapper);
     }
     let btn = wrapper.querySelector(`.${MARKER_CLASS}`);
     if (!btn) {
@@ -3187,6 +3173,24 @@ repeat:
     return btn;
   }
 
+  // doc: live document. container: element to append the marker into (an
+  // existing action-icon cell, ideally, so it reads as part of that row).
+  // coordKey: this row's "galaxy:system:position" (see planetNotes.js).
+  // options: { getNote(coordKey), onSave(coordKey, note), onClear(coordKey) }.
+  function renderMarker(doc, container, coordKey, options) {
+    const note = options.getNote(coordKey);
+    const marker = markerFor(doc, container);
+    const info = PlanetNotes.markerFor(note);
+    marker.textContent = info.glyph;
+    marker.title = `OQueue: ${info.title}`;
+    marker.classList.toggle('oqueue-tagged', !!note);
+    marker.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPopup(doc, marker, coordKey, note, options);
+    };
+  }
+
   function remove(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
     if (!doc) return;
@@ -3194,7 +3198,133 @@ repeat:
     closePopup(doc);
   }
 
-  return { render, remove };
+  return { ensureStyle, renderMarker, remove };
+});
+
+// ---- galaxyOverlay.js --------------------------------------------
+/*
+ * Galaxy-view planet tagging: finds each planet row on the Galaxy page
+ * (component=galaxy) and its coordinate, and hands them to noteOverlay.js
+ * for the actual marker/popup - see that file for the shared UI, and
+ * dom.js's Galaxy-page comment block for the confirmed markup this reads.
+ *
+ * The marker is appended into the row's existing `.cellAction` cell
+ * (alongside the espionage/message/buddy/missile icons), falling back to
+ * the row itself if that cell is ever missing.
+ *
+ * CONFIRMED (2026-09, live Chrome session): `.cellAction` actually has
+ * an explicit CSS width (~101px, sized for exactly its 5 native icons,
+ * not content-derived despite appearances - verified by removing the
+ * marker and watching the cell's width stay unchanged). `flex-shrink: 0`
+ * alone (an earlier version of this fix) only stops the *row* from
+ * shrinking the cell as a whole; it does nothing about that fixed width
+ * being too small once a 6th child (the marker) is appended, so the
+ * cell's own internal flex layout was still squeezing something to fit
+ * within it - specifically the leftmost "search for lifeforms" icon
+ * (`.planetDiscoverIcons`), crushed from its natural 17px down to 9px,
+ * since apparently only that icon (not the 4 `<a>` action icons next to
+ * it) lacks its own flex-shrink:0 protection in the game's CSS. Fixed by
+ * also overriding `width: auto !important` on `.cellAction` - confirmed
+ * live across all 15 rows that this restores every native icon
+ * (including the discover one) to its natural width while the cell
+ * grows by ~8-9px to fit, with no row overflow. (An even earlier version
+ * scoped this with `:has(.oqueue-note-cell)` to only affect tagged rows,
+ * but `:has()` support isn't universal - an unsupported pseudo-class
+ * invalidates the whole selector rather than degrading gracefully, so
+ * the rule silently did nothing on a browser without it. Applying both
+ * rules unconditionally to every `.cellAction` avoids that trap; it's
+ * harmless on untagged rows too since we only inject this stylesheet on
+ * the Galaxy page.)
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory(
+      typeof require !== 'undefined' ? require('./planetNotes') : root.OQueue.PlanetNotes,
+      typeof require !== 'undefined' ? require('./dom') : root.OQueue.Dom,
+      typeof require !== 'undefined' ? require('./noteOverlay') : root.OQueue.NoteOverlay
+    );
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.GalaxyOverlay = factory(root.OQueue.PlanetNotes, root.OQueue.Dom, root.OQueue.NoteOverlay);
+  }
+})(typeof self !== 'undefined' ? self : this, function (PlanetNotes, Dom, NoteOverlay) {
+  'use strict';
+
+  const STYLE_ID = 'oqueue-galaxy-style';
+
+  function ensureGalaxyStyle(doc) {
+    if (doc.getElementById(STYLE_ID)) return;
+    const style = doc.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `${Dom.SELECTORS.galaxyActionCell} { flex-shrink: 0; width: auto !important; }`;
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+
+  // doc: live document. options:
+  //   getNote(coordKey) -> note|null    - looks up a saved note
+  //   onSave(coordKey, note)            - persist a note (preset/emoji/text)
+  //   onClear(coordKey)                 - delete a note
+  function render(doc, options) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return;
+    const coords = Dom.currentGalaxyCoords(doc);
+    if (!coords) return;
+    NoteOverlay.ensureStyle(doc);
+    ensureGalaxyStyle(doc);
+
+    Dom.readGalaxyRows(doc).forEach(({ position, row }) => {
+      const coordKey = PlanetNotes.coordKey(coords.galaxy, coords.system, position);
+      const container = row.querySelector(Dom.SELECTORS.galaxyActionCell) || row;
+      NoteOverlay.renderMarker(doc, container, coordKey, options);
+    });
+  }
+
+  return { render, remove: NoteOverlay.remove };
+});
+
+// ---- messagesOverlay.js ------------------------------------------
+/*
+ * Messages-page planet tagging: finds each message's coordinate (see
+ * dom.js#readMessageRows) and hands it to noteOverlay.js for the actual
+ * marker/popup - same tag you'd set from the Galaxy page (galaxyOverlay.js),
+ * just reachable straight from an espionage report/combat report without
+ * switching pages to look the coordinate up in the galaxy view first.
+ *
+ * The marker is appended into the message's collapsed-row icon strip
+ * (`.msgFilteredHeaderCell_actions` - star/reply/forward/...), falling back
+ * to the message's own container if that cell is ever missing.
+ */
+(function (root, factory) {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory(
+      typeof require !== 'undefined' ? require('./planetNotes') : root.OQueue.PlanetNotes,
+      typeof require !== 'undefined' ? require('./dom') : root.OQueue.Dom,
+      typeof require !== 'undefined' ? require('./noteOverlay') : root.OQueue.NoteOverlay
+    );
+  } else {
+    root.OQueue = root.OQueue || {};
+    root.OQueue.MessagesOverlay = factory(root.OQueue.PlanetNotes, root.OQueue.Dom, root.OQueue.NoteOverlay);
+  }
+})(typeof self !== 'undefined' ? self : this, function (PlanetNotes, Dom, NoteOverlay) {
+  'use strict';
+
+  // doc: live document. options:
+  //   getNote(coordKey) -> note|null    - looks up a saved note
+  //   onSave(coordKey, note)            - persist a note (preset/emoji/text)
+  //   onClear(coordKey)                 - delete a note
+  function render(doc, options) {
+    doc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc) return;
+    NoteOverlay.ensureStyle(doc);
+
+    Dom.readMessageRows(doc).forEach(({ galaxy, system, position, row }) => {
+      const coordKey = PlanetNotes.coordKey(galaxy, system, position);
+      const container = row.querySelector(Dom.SELECTORS.messageActionsCell) || row;
+      NoteOverlay.renderMarker(doc, container, coordKey, options);
+    });
+  }
+
+  return { render, remove: NoteOverlay.remove };
 });
 
 // ---- main.js -----------------------------------------------------
@@ -3221,7 +3351,9 @@ repeat:
         Roi: require('./roi'),
         RoiOverlay: require('./roiOverlay'),
         PlanetNotes: require('./planetNotes'),
+        NoteOverlay: require('./noteOverlay'),
         GalaxyOverlay: require('./galaxyOverlay'),
+        MessagesOverlay: require('./messagesOverlay'),
       }
     );
   } else {
@@ -3337,6 +3469,9 @@ repeat:
     if (pageComponent === 'galaxy') {
       return { scope: 'galaxy' };
     }
+    if (pageComponent === 'messages') {
+      return { scope: 'messages' };
+    }
     return { scope: 'planet' };
   }
 
@@ -3354,10 +3489,11 @@ repeat:
     const isFleet = context.scope === 'fleet';
     const isHighscore = context.scope === 'highscore';
     const isGalaxy = context.scope === 'galaxy';
+    const isMessages = context.scope === 'messages';
     const isPlanetQueue = context.scope === 'planet';
     const isSupplies = OQueue.Dom.currentPage(doc.location) === 'supplies';
     const planetId =
-      isResearch || isLifeformResearch || isFleet || isHighscore || isGalaxy
+      isResearch || isLifeformResearch || isFleet || isHighscore || isGalaxy || isMessages
         ? null
         : OQueue.Dom.activePlanetId(doc) || 'default';
     const title = isResearch
@@ -3372,7 +3508,9 @@ repeat:
               ? 'Highscore'
               : isGalaxy
                 ? 'Galaxy Scan'
-                : `Colony Queue - ${planetId}`;
+                : isMessages
+                  ? 'Messages'
+                  : `Colony Queue - ${planetId}`;
 
     function getState() {
       if (isResearch) return store.getAccountState();
@@ -3445,22 +3583,41 @@ repeat:
       toast = null;
     }
 
-    // Galaxy page (component=galaxy) isn't a queue either - see
-    // galaxyOverlay.js for the actual feature (a clickable tag marker on
-    // each planet row). The panel here just shows a one-line reminder;
-    // getNote/onSave/onClear are thin wrappers over the store so the DOM
-    // layer never touches storage directly (same separation as
-    // getState/setState above).
-    function refreshGalaxy() {
-      OQueue.GalaxyOverlay.render(doc, {
+    // Shared by Galaxy and Messages (both use noteOverlay.js's marker/popup
+    // against the same oqueue:note: store) - thin wrappers so the DOM layer
+    // never touches storage directly (same separation as getState/setState
+    // above).
+    function noteHandlers() {
+      return {
         getNote: (coordKey) => store.getPlanetNote(coordKey),
         onSave: (coordKey, note) => store.setPlanetNote(coordKey, note),
         onClear: (coordKey) => store.deletePlanetNote(coordKey),
-      });
+      };
+    }
+
+    // Galaxy page (component=galaxy) isn't a queue either - see
+    // galaxyOverlay.js for the actual feature (a clickable tag marker on
+    // each planet row). The panel here just shows a one-line reminder.
+    function refreshGalaxy() {
+      OQueue.GalaxyOverlay.render(doc, noteHandlers());
       panel.render({
         title,
         showQueue: false,
         statusMessage: 'Click the 🏷 next to a planet to tag it (defended / weak / farm target / watch).',
+        toast,
+      });
+      toast = null;
+    }
+
+    // Messages page (component=messages) - same tag marker as Galaxy (see
+    // messagesOverlay.js), reachable straight from an espionage/combat
+    // report's own coordinate without switching pages first.
+    function refreshMessages() {
+      OQueue.MessagesOverlay.render(doc, noteHandlers());
+      panel.render({
+        title,
+        showQueue: false,
+        statusMessage: 'Click the 🏷 on a message with a coordinate to tag that planet.',
         toast,
       });
       toast = null;
@@ -3471,6 +3628,7 @@ repeat:
       if (isHighscore) return refreshHighscore();
       if (isLifeformResearch) return refreshLifeformResearch();
       if (isGalaxy) return refreshGalaxy();
+      if (isMessages) return refreshMessages();
 
       const state = getState();
       const domLevels = readLevels();
